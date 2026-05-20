@@ -1,5 +1,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+// TypeScript may complain about missing type declarations for CSS imports.
+// Suppress that specific error for this side-effect import.
+// @ts-ignore: TS2307
 import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';

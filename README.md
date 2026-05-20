@@ -1,46 +1,72 @@
-# Getting Started with Create React App
+# 야자 출석 시스템
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+학생과 교사가 함께 쓰는 웹 전용 야자 출석 관리 앱입니다.
 
-## Available Scripts
+## 구조
 
-In the project directory, you can run:
+```text
+Next.js App Router
+├─ 브라우저 UI
+└─ Route Handler API -> Supabase PostgreSQL
+```
 
-### `npm start`
+- 브라우저는 Supabase에 직접 접근하지 않습니다.
+- 모든 데이터 접근은 Next 서버 라우트에서 `SUPABASE_SERVICE_ROLE_KEY`로 처리합니다.
+- 로그인 세션은 `HttpOnly` 쿠키로 관리합니다.
+- 변경 요청은 CSRF 토큰을 추가로 확인합니다.
+- 교사 고유 번호는 보안 해시로 저장합니다.
+- 학생 기기는 서버가 발급한 브라우저 기기 쿠키로 관리합니다.
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+## 주요 기능
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+- 학생 출석/퇴실 처리
+- 학생/교사 로그인
+- 학생 첫 기기 등록 시 학번과 이름 확인
+- 한 기기는 한 학생에게만 등록
+- 학생 한 명당 최대 2개 기기 등록
+- 학생 계정은 등록된 기기에서만 출석/퇴실 처리
+- 교사 계정은 학생 추가/수정/삭제, 교사 계정 추가/수정, 기기 초기화, 날짜별 출결 확인, 수동 출석/퇴실 처리
 
-### `npm test`
+## 개발 실행
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+Supabase 프로젝트에서 SQL editor를 열고 먼저 스키마를 적용합니다.
 
-### `npm run build`
+```sql
+-- supabase/schema.sql 전체 내용을 Supabase SQL editor에서 실행
+```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+`Could not find the table 'public.users' in the schema cache` 오류가 보이면 아직 이 SQL이 적용되지 않았거나 Supabase API 캐시가 갱신되지 않은 상태입니다. `supabase/schema.sql`을 끝까지 다시 실행하면 마지막 줄에서 캐시를 갱신합니다.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+`.env.local`에 Supabase 서버 환경 변수를 입력한 뒤 실행합니다.
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+```bash
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+```
 
-### `npm run eject`
+`SUPABASE_SERVICE_ROLE_KEY`에는 anon/public key가 아니라 Supabase Dashboard > Project Settings > API의 `service_role` secret key를 넣어야 합니다. anon key를 넣으면 `new row violates row-level security policy` 오류가 납니다.
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+```bash
+npm run dev
+```
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+프론트엔드와 API가 모두 `http://localhost:3000`에서 실행됩니다.
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+## 운영 빌드
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+```bash
+npm run build
+NODE_ENV=production \
+BOOTSTRAP_TEACHER_IDENTIFIER='처음 사용할 교사 고유 번호' \
+BOOTSTRAP_TEACHER_NAME='처음 사용할 교사 이름' \
+npm start
+```
 
-## Learn More
+운영 서버는 반드시 HTTPS 뒤에서 배포해야 합니다. Supabase 서비스 역할 키는 서버 환경 변수로만 보관해야 하며 브라우저에 노출하면 안 됩니다. 첫 실행 시 위 환경 변수로 최초 교사 계정을 한 번만 만들고, 이후 교사 계정은 관리자 화면에서 추가합니다.
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+## 개발용 기본 계정
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+개발 모드에서 `users` 테이블이 비어 있으면 샘플 계정이 자동 생성됩니다.
+
+- 교사: 고유 번호 `teacher01` / 이름 `담당 교사`
+- 학생 예시: 학번 `20101` / 이름 `김민준`
