@@ -39,6 +39,7 @@ import { LocationGuideModal } from './features/location/LocationGuideModal';
 import { StudentView } from './features/student/StudentView';
 import { TeacherView } from './features/teacher/TeacherView';
 import { FeedbackMessage } from './types/ui';
+import { SpeedInsights } from "@vercel/speed-insights/next"
 
 const LOCATION_GUIDE_SEEN_KEY = 'attend.location-guide-seen';
 
