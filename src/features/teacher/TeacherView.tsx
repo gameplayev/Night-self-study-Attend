@@ -4,10 +4,12 @@ import {
   Student,
   formatKoreanFullDate,
   getDailyPresence,
+  getStudentAbsentCount,
 } from '../../lib/attendance';
 import {
   CreateTeacherInput,
   CreateStudentInput,
+  ManualAttendanceAction,
   Teacher,
   UpdateStudentInput,
   UpdateTeacherInput,
@@ -39,7 +41,8 @@ export function TeacherView({
   onDeleteStudent: (student: Student) => Promise<void>;
   onManualAttendance: (
     student: Student,
-    action: 'check_in' | 'check_out' | 'absent',
+    action: ManualAttendanceAction,
+    dateKey?: string,
   ) => Promise<void>;
   onResetDevices: (student: Student) => Promise<void>;
   onUpdateStudent: (
@@ -53,16 +56,35 @@ export function TeacherView({
   message: FeedbackMessage | null;
 }) {
   const [query, setQuery] = useState('');
+  const sortedStudents = useMemo(
+    () =>
+      [...students].sort(
+        (left, right) =>
+          left.seatNumber - right.seatNumber ||
+          left.studentNumber.localeCompare(right.studentNumber),
+      ),
+    [students],
+  );
   // 교사 화면 상단 통계는 오늘 기록만 기준으로 하므로 학생별 현재 상태를 먼저 맵으로 만든다.
   const presenceMap = useMemo(
     () =>
       new Map(
-        students.map((student) => [
+        sortedStudents.map((student) => [
           student.studentNumber,
           getDailyPresence(student.studentNumber, records),
         ]),
       ),
-    [records, students],
+    [records, sortedStudents],
+  );
+  const absentCountMap = useMemo(
+    () =>
+      new Map(
+        sortedStudents.map((student) => [
+          student.studentNumber,
+          getStudentAbsentCount(student.studentNumber, records),
+        ]),
+      ),
+    [records, sortedStudents],
   );
   const presentCount = [...presenceMap.values()].filter(
     (status) => status === 'present',
@@ -88,8 +110,9 @@ export function TeacherView({
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <StudentRosterSection
-          students={students}
+          students={sortedStudents}
           presenceMap={presenceMap}
+          absentCountMap={absentCountMap}
           query={query}
           onQueryChange={setQuery}
           onDeleteStudent={onDeleteStudent}
@@ -105,7 +128,11 @@ export function TeacherView({
         />
       </section>
 
-      <DailyAttendanceSection students={students} records={records} />
+      <DailyAttendanceSection
+        students={sortedStudents}
+        records={records}
+        onManualAttendance={onManualAttendance}
+      />
 
       {message && (
         <p

@@ -1,6 +1,16 @@
 import { Student, DailyPresence } from '../../lib/attendance';
 import { UpdateStudentInput } from '../../services/appService';
 import { useState } from 'react';
+import {
+  formatParsedStudentClass,
+  normalizeStudentNumberInput,
+} from '../../lib/students';
+
+interface EditStudentForm {
+  studentNumber: string;
+  name: string;
+  seatNumber: string;
+}
 
 export function StudentRosterSection({
   students,
@@ -8,12 +18,14 @@ export function StudentRosterSection({
   query,
   onQueryChange,
   onDeleteStudent,
+  absentCountMap,
   onManualAttendance,
   onResetDevices,
   onUpdateStudent,
 }: {
   students: Student[];
   presenceMap: Map<string, DailyPresence>;
+  absentCountMap: Map<string, number>;
   query: string;
   onQueryChange: (query: string) => void;
   onDeleteStudent: (student: Student) => Promise<void>;
@@ -29,26 +41,28 @@ export function StudentRosterSection({
 }) {
   // 검색어는 학번과 이름을 함께 대상으로 삼아 빠른 명단 탐색을 지원한다.
   const filteredStudents = students.filter((student) =>
-    `${student.studentNumber} ${student.name}`
+    `${student.seatNumber} ${student.studentNumber} ${student.name}`
       .toLowerCase()
       .includes(query.trim().toLowerCase()),
   );
   const [editingStudentId, setEditingStudentId] = useState<number | null>(null);
-  const [editStudent, setEditStudent] = useState<UpdateStudentInput | null>(null);
+  const [editStudent, setEditStudent] = useState<EditStudentForm | null>(null);
 
   function startEditing(student: Student) {
     setEditingStudentId(student.id);
     setEditStudent({
       studentNumber: student.studentNumber,
       name: student.name,
-      grade: student.grade,
-      classNumber: student.classNumber,
+      seatNumber: String(student.seatNumber),
     });
   }
 
   async function saveStudent(student: Student) {
     if (!editStudent) return;
-    await onUpdateStudent(student, editStudent);
+    await onUpdateStudent(student, {
+      ...editStudent,
+      seatNumber: Number(editStudent.seatNumber),
+    });
     setEditingStudentId(null);
     setEditStudent(null);
   }
@@ -74,10 +88,12 @@ export function StudentRosterSection({
         <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
           <thead className="bg-slate-50 text-slate-600">
             <tr>
+              <th className="px-4 py-3 font-medium">좌석</th>
               <th className="px-4 py-3 font-medium">학번</th>
               <th className="px-4 py-3 font-medium">이름</th>
               <th className="px-4 py-3 font-medium">학급</th>
               <th className="px-4 py-3 font-medium">기기</th>
+              <th className="px-4 py-3 font-medium">결석</th>
               <th className="px-4 py-3 font-medium">상태</th>
               <th className="px-4 py-3 font-medium">관리</th>
             </tr>
@@ -87,8 +103,35 @@ export function StudentRosterSection({
               const status = presenceMap.get(student.studentNumber) ?? null;
               const isEditing =
                 editingStudentId === student.id && editStudent !== null;
+              const parsedClassLabel = isEditing
+                ? formatParsedStudentClass(editStudent.studentNumber)
+                : null;
               return (
                 <tr key={student.id}>
+                  <td className="px-4 py-3 text-slate-600">
+                    {isEditing ? (
+                      <input
+                        value={editStudent.seatNumber}
+                        onChange={(event) =>
+                          setEditStudent((value) =>
+                            value
+                              ? {
+                                  ...value,
+                                  seatNumber: event.target.value.replace(
+                                    /\D/g,
+                                    '',
+                                  ),
+                                }
+                              : value,
+                          )
+                        }
+                        inputMode="numeric"
+                        className="h-8 w-16 rounded-md border border-slate-300 px-2 text-sm"
+                      />
+                    ) : (
+                      student.seatNumber
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-slate-600">
                     {isEditing ? (
                       <input
@@ -96,10 +139,18 @@ export function StudentRosterSection({
                         onChange={(event) =>
                           setEditStudent((value) =>
                             value
-                              ? { ...value, studentNumber: event.target.value }
+                              ? {
+                                  ...value,
+                                  studentNumber: normalizeStudentNumberInput(
+                                    event.target.value,
+                                  ),
+                                }
                               : value,
                           )
                         }
+                        inputMode="numeric"
+                        maxLength={5}
+                        pattern="[0-9]{5}"
                         className="h-8 w-24 rounded-md border border-slate-300 px-2 text-sm"
                       />
                     ) : (
@@ -123,33 +174,7 @@ export function StudentRosterSection({
                   </td>
                   <td className="px-4 py-3 text-slate-600">
                     {isEditing ? (
-                      <div className="flex gap-2">
-                        <input
-                          value={editStudent.grade}
-                          onChange={(event) =>
-                            setEditStudent((value) =>
-                              value
-                                ? { ...value, grade: Number(event.target.value) }
-                                : value,
-                            )
-                          }
-                          className="h-8 w-14 rounded-md border border-slate-300 px-2 text-sm"
-                        />
-                        <input
-                          value={editStudent.classNumber}
-                          onChange={(event) =>
-                            setEditStudent((value) =>
-                              value
-                                ? {
-                                    ...value,
-                                    classNumber: Number(event.target.value),
-                                  }
-                                : value,
-                            )
-                          }
-                          className="h-8 w-14 rounded-md border border-slate-300 px-2 text-sm"
-                        />
-                      </div>
+                      parsedClassLabel ?? '학번 확인 필요'
                     ) : (
                       <>
                         {student.grade}학년 {student.classNumber}반
@@ -158,6 +183,9 @@ export function StudentRosterSection({
                   </td>
                   <td className="px-4 py-3 text-slate-600">
                     {student.deviceCount}/2
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {absentCountMap.get(student.studentNumber) ?? 0}회
                   </td>
                   <td className="px-4 py-3">
                     <span

@@ -6,6 +6,7 @@ import {
   AuthSession,
   CreateTeacherInput,
   CreateStudentInput,
+  ManualAttendanceAction,
   Teacher,
   UpdateStudentInput,
   UpdateTeacherInput,
@@ -262,7 +263,8 @@ function App() {
   // 교사가 학생 행에서 직접 누르는 수동 출결 처리다.
   async function handleManualAttendance(
     student: Student,
-    action: 'check_in' | 'check_out' | 'absent',
+    action: ManualAttendanceAction,
+    dateKey?: string,
   ) {
     if (!session) return;
     try {
@@ -270,6 +272,7 @@ function App() {
         student.id,
         action,
         session.csrfToken,
+        dateKey,
       );
       setRecords((value) => [record, ...value]);
       setMessage({
@@ -279,7 +282,9 @@ function App() {
             ? '출석'
             : action === 'check_out'
               ? '퇴실'
-              : '미출석'
+              : action === 'present'
+                ? '출석'
+                : '미출석'
         }을 처리했습니다.`,
       });
     } catch (error) {

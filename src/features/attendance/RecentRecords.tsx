@@ -27,14 +27,14 @@ export function RecentRecords({ records }: { records: AttendanceRecord[] }) {
                 </div>
                 <span
                   className={`rounded px-2 py-1 text-xs font-semibold ${
-                    record.action === 'check_in'
+                    record.action === 'check_in' || record.action === 'present'
                       ? 'bg-emerald-50 text-emerald-700'
                       : record.action === 'check_out'
                         ? 'bg-amber-50 text-amber-700'
                         : 'bg-slate-100 text-slate-700'
                   }`}
                 >
-                  {record.action === 'check_in'
+                  {record.action === 'check_in' || record.action === 'present'
                     ? '출석'
                     : record.action === 'check_out'
                       ? '퇴실'

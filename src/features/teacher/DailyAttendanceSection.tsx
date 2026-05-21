@@ -5,15 +5,22 @@ import {
   formatAttendanceDateLabel,
   formatKoreanDateTime,
   getAttendanceDateKey,
+  getDateKeyDaysAgo,
   getDailyAttendanceSummary,
 } from '../../lib/attendance';
 
 export function DailyAttendanceSection({
   students,
   records,
+  onManualAttendance,
 }: {
   students: Student[];
   records: AttendanceRecord[];
+  onManualAttendance: (
+    student: Student,
+    action: 'present' | 'absent',
+    dateKey: string,
+  ) => Promise<void>;
 }) {
   const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
   // 기록 이벤트를 날짜별로 묶어 오른쪽 날짜 선택 목록과 왼쪽 일일 표가 같은 기준을 공유하게 한다.
@@ -27,51 +34,52 @@ export function DailyAttendanceSection({
       right.localeCompare(left),
     );
   }, [records]);
-  const activeDateKey = selectedDateKey ?? recordsByDate[0]?.[0] ?? null;
+  const selectableDateKeys = useMemo(() => {
+    const dateKeys = new Set(recordsByDate.map(([dateKey]) => dateKey));
+    dateKeys.add(getDateKeyDaysAgo(0));
+    dateKeys.add(getDateKeyDaysAgo(1));
+    return [...dateKeys].sort((left, right) => right.localeCompare(left));
+  }, [recordsByDate]);
+  const activeDateKey = selectedDateKey ?? getDateKeyDaysAgo(0);
   // 실제 표는 모든 학생을 기준으로 만들기 때문에 기록이 없는 학생도 미출석으로 남는다.
   const selectedDateRows = useMemo(
     () =>
-      activeDateKey
-        ? students.map((student) => ({
-            student,
-            summary: getDailyAttendanceSummary(
-              student.studentNumber,
-              records,
-              activeDateKey,
-            ),
-          }))
-        : [],
+      students.map((student) => ({
+        student,
+        summary: getDailyAttendanceSummary(
+          student.studentNumber,
+          records,
+          activeDateKey,
+        ),
+      })),
     [activeDateKey, records, students],
   );
 
   useEffect(() => {
-    if (
-      selectedDateKey &&
-      recordsByDate.some(([dateKey]) => dateKey === selectedDateKey)
-    ) {
+    if (selectedDateKey && selectableDateKeys.includes(selectedDateKey)) {
       return;
     }
-    setSelectedDateKey(recordsByDate[0]?.[0] ?? null);
-  }, [recordsByDate, selectedDateKey]);
+    setSelectedDateKey(getDateKeyDaysAgo(0));
+  }, [selectableDateKeys, selectedDateKey]);
 
   return (
     <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
       <div className="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
         <p className="text-sm font-medium text-slate-500">출석 기록</p>
         <h2 className="mt-1 text-xl font-semibold text-slate-900">
-          {activeDateKey
-            ? `${formatAttendanceDateLabel(activeDateKey)} 출결 기록`
-            : '날짜별 출결 기록'}
+          {formatAttendanceDateLabel(activeDateKey)} 출결 기록
         </h2>
         <div className="mt-5 overflow-hidden rounded-md border border-slate-200">
           <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
             <thead className="bg-slate-50 text-slate-600">
               <tr>
                 <th className="px-4 py-3 font-medium">학생</th>
+                <th className="px-4 py-3 font-medium">좌석</th>
                 <th className="px-4 py-3 font-medium">학급</th>
                 <th className="px-4 py-3 font-medium">상태</th>
                 <th className="px-4 py-3 font-medium">출석 시각</th>
                 <th className="px-4 py-3 font-medium">퇴실 시각</th>
+                <th className="px-4 py-3 font-medium">처리</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
@@ -82,6 +90,9 @@ export function DailyAttendanceSection({
                     <p className="text-xs text-slate-500">
                       {student.studentNumber}
                     </p>
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {student.seatNumber}
                   </td>
                   <td className="px-4 py-3 text-slate-600">
                     {student.grade}학년 {student.classNumber}반
@@ -113,15 +124,41 @@ export function DailyAttendanceSection({
                       ? formatKoreanDateTime(summary.checkOutAt)
                       : '-'}
                   </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void onManualAttendance(
+                            student,
+                            'present',
+                            activeDateKey,
+                          )
+                        }
+                        className="h-8 rounded-md border border-emerald-300 px-3 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50"
+                      >
+                        출석
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void onManualAttendance(student, 'absent', activeDateKey)
+                        }
+                        className="h-8 rounded-md border border-slate-300 px-3 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                      >
+                        미출석
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
               {selectedDateRows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={7}
                     className="px-4 py-8 text-center text-sm text-slate-500"
                   >
-                    선택할 수 있는 날짜 기록이 없습니다.
+                    등록된 학생이 없습니다.
                   </td>
                 </tr>
               )}
@@ -135,28 +172,22 @@ export function DailyAttendanceSection({
           출결 기록
         </h2>
         <div className="mt-5 space-y-2">
-          {recordsByDate.length === 0 ? (
-            <p className="rounded-md bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-              아직 처리된 기록이 없습니다.
-            </p>
-          ) : (
-            recordsByDate.map(([dateKey]) => (
-              <button
-                key={dateKey}
-                type="button"
-                onClick={() => setSelectedDateKey(dateKey)}
-                className={`flex h-12 w-full items-center rounded-md border px-4 text-sm transition ${
-                  activeDateKey === dateKey
-                    ? 'border-slate-900 bg-slate-900 text-white'
-                    : 'border-slate-200 text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                <span className="font-semibold">
-                  {formatAttendanceDateLabel(dateKey)} 출결 기록
-                </span>
-              </button>
-            ))
-          )}
+          {selectableDateKeys.map((dateKey) => (
+            <button
+              key={dateKey}
+              type="button"
+              onClick={() => setSelectedDateKey(dateKey)}
+              className={`flex h-12 w-full items-center rounded-md border px-4 text-sm transition ${
+                activeDateKey === dateKey
+                  ? 'border-slate-900 bg-slate-900 text-white'
+                  : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <span className="font-semibold">
+                {formatAttendanceDateLabel(dateKey)} 출결 기록
+              </span>
+            </button>
+          ))}
         </div>
       </aside>
     </section>

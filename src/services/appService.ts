@@ -38,15 +38,13 @@ export interface StudentAccess {
 export interface CreateStudentInput {
   studentNumber: string;
   name: string;
-  grade: number;
-  classNumber: number;
+  seatNumber: number;
 }
 
 export interface UpdateStudentInput {
   studentNumber: string;
   name: string;
-  grade: number;
-  classNumber: number;
+  seatNumber: number;
 }
 
 export interface Teacher {
@@ -64,7 +62,11 @@ export interface UpdateTeacherInput {
   newIdentifier?: string;
 }
 
-export type ManualAttendanceAction = 'check_in' | 'check_out' | 'absent';
+export type ManualAttendanceAction =
+  | 'check_in'
+  | 'check_out'
+  | 'absent'
+  | 'present';
 
 async function apiRequest<T>(
   path: string,
@@ -249,10 +251,11 @@ export async function submitManualAttendance(
   studentId: number,
   action: ManualAttendanceAction,
   csrfToken: string,
+  dateKey?: string,
 ) {
   return apiRequest<AttendanceRecord>('/api/attendance/manual', {
     method: 'POST',
-    body: JSON.stringify({ studentId, action }),
+    body: JSON.stringify({ studentId, action, dateKey }),
     csrfToken,
   });
 }

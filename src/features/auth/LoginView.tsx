@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { DeviceIdentity } from '../../services/deviceService';
 import { PendingRegistration } from './types';
+import { normalizeStudentNumberInput } from '../../lib/students';
 
 export function LoginView({
   device,
@@ -38,6 +39,9 @@ export function LoginView({
   // 역할을 바꾸면 학생 기기 등록 안내도 더 이상 유효하지 않으므로 함께 초기화한다.
   function handleRoleChange(nextRole: 'student' | 'teacher') {
     setRole(nextRole);
+    if (nextRole === 'student') {
+      setIdentifier((value) => normalizeStudentNumberInput(value));
+    }
     onClearRegistration();
   }
 
@@ -50,9 +54,16 @@ export function LoginView({
         type={role === 'teacher' ? 'password' : 'text'}
         value={identifier}
         onChange={(event) => {
-          setIdentifier(event.target.value);
+          setIdentifier(
+            role === 'student'
+              ? normalizeStudentNumberInput(event.target.value)
+              : event.target.value,
+          );
           onClearRegistration();
         }}
+        inputMode={role === 'student' ? 'numeric' : undefined}
+        maxLength={role === 'student' ? 5 : undefined}
+        pattern={role === 'student' ? '[0-9]{5}' : undefined}
         autoComplete={role === 'teacher' ? 'current-password' : 'username'}
         className="h-12 w-full rounded-md border border-slate-300 px-4 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
       />

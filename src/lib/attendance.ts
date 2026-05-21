@@ -4,15 +4,18 @@ export interface Student {
   name: string;
   grade: number;
   classNumber: number;
+  seatNumber: number;
   deviceCount: number;
 }
+
+export type AttendanceAction = 'check_in' | 'check_out' | 'absent' | 'present';
 
 // 출결 화면과 서비스 계층이 공통으로 사용하는 단일 출결 이벤트 형식이다.
 export interface AttendanceRecord {
   id: string;
   studentNumber: string;
   studentName: string;
-  action: 'check_in' | 'check_out' | 'absent';
+  action: AttendanceAction;
   timestamp: string;
   deviceId: string;
   deviceLabel: string;
@@ -40,7 +43,7 @@ export function getCurrentPresence(
   );
 
   if (!latestRecord || latestRecord.action === 'absent') return null;
-  return latestRecord.action === 'check_in' ? 'present' : 'checked_out';
+  return latestRecord.action === 'check_out' ? 'checked_out' : 'present';
 }
 
 // 날짜별 집계를 안정적으로 하기 위해 YYYY-MM-DD 형태의 한국 시간 기준 키로 변환한다.
@@ -56,6 +59,12 @@ export function getAttendanceDateKey(timestamp: string) {
 // 오늘 출결 상태를 계산할 때 사용할 한국 시간 기준의 오늘 날짜 키를 만든다.
 export function getTodayDateKey(referenceDate = new Date()) {
   return getAttendanceDateKey(referenceDate.toISOString());
+}
+
+export function getDateKeyDaysAgo(daysAgo: number, referenceDate = new Date()) {
+  return getTodayDateKey(
+    new Date(referenceDate.getTime() - daysAgo * 24 * 60 * 60 * 1000),
+  );
 }
 
 // 날짜 선택 버튼처럼 짧은 문구가 필요한 화면에서 쓰는 표시용 포맷이다.
@@ -98,7 +107,7 @@ export function getDailyPresence(
     right.timestamp.localeCompare(left.timestamp),
   )[0];
   if (!latestRecord || latestRecord.action === 'absent') return null;
-  return latestRecord.action === 'check_in' ? 'present' : 'checked_out';
+  return latestRecord.action === 'check_out' ? 'checked_out' : 'present';
 }
 
 // 특정 날짜의 학생별 일일 요약을 만든다.
@@ -116,21 +125,18 @@ export function getDailyAttendanceSummary(
   const latestRecord = [...dailyRecords].sort((left, right) =>
     right.timestamp.localeCompare(left.timestamp),
   )[0];
-  const isLatestAbsent = latestRecord?.action === 'absent';
-  const checkInAt = isLatestAbsent
-    ? null
-    : dailyRecords
-        .filter((record) => record.action === 'check_in')
-        .map((record) => record.timestamp)
-        .sort()
-        .at(-1) ?? null;
-  const checkOutAt = isLatestAbsent
-    ? null
-    : dailyRecords
-        .filter((record) => record.action === 'check_out')
-        .map((record) => record.timestamp)
-        .sort()
-        .at(-1) ?? null;
+  const checkInAt =
+    dailyRecords
+      .filter((record) => record.action === 'check_in')
+      .map((record) => record.timestamp)
+      .sort()
+      .at(-1) ?? null;
+  const checkOutAt =
+    dailyRecords
+      .filter((record) => record.action === 'check_out')
+      .map((record) => record.timestamp)
+      .sort()
+      .at(-1) ?? null;
 
   return {
     studentNumber,
@@ -139,11 +145,27 @@ export function getDailyAttendanceSummary(
     status: latestRecord
       ? latestRecord.action === 'absent'
         ? 'absent'
-        : latestRecord.action === 'check_in'
-          ? 'present'
-          : 'checked_out'
+        : latestRecord.action === 'check_out'
+          ? 'checked_out'
+          : 'present'
       : 'absent',
   };
+}
+
+export function getStudentAbsentCount(
+  studentNumber: string,
+  records: AttendanceRecord[],
+) {
+  const dateKeys = new Set(
+    records
+      .filter((record) => record.studentNumber === studentNumber)
+      .map((record) => getAttendanceDateKey(record.timestamp)),
+  );
+  return [...dateKeys].filter(
+    (dateKey) =>
+      getDailyAttendanceSummary(studentNumber, records, dateKey).status ===
+      'absent',
+  ).length;
 }
 
 // 출석/퇴실 시각을 표에서 읽기 쉬운 한국어 날짜와 시간으로 바꾼다.

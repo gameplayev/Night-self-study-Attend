@@ -5,6 +5,10 @@ import {
   Teacher,
   UpdateTeacherInput,
 } from '../../services/appService';
+import {
+  formatParsedStudentClass,
+  normalizeStudentNumberInput,
+} from '../../lib/students';
 
 export function TeacherManagementPanels({
   teachers,
@@ -28,9 +32,9 @@ export function TeacherManagementPanels({
   const [newStudent, setNewStudent] = useState({
     studentNumber: '',
     name: '',
-    grade: '2',
-    classNumber: '1',
+    seatNumber: '',
   });
+  const parsedClassLabel = formatParsedStudentClass(newStudent.studentNumber);
   const [editingTeacherId, setEditingTeacherId] = useState<number | null>(null);
   const [editTeacher, setEditTeacher] = useState<UpdateTeacherInput | null>(null);
 
@@ -40,14 +44,12 @@ export function TeacherManagementPanels({
       await onAddStudent({
         studentNumber: newStudent.studentNumber,
         name: newStudent.name,
-        grade: Number(newStudent.grade),
-        classNumber: Number(newStudent.classNumber),
+        seatNumber: Number(newStudent.seatNumber),
       });
       setNewStudent({
         studentNumber: '',
         name: '',
-        grade: '2',
-        classNumber: '1',
+        seatNumber: '',
       });
     } catch {
       // Error feedback is shown by the parent view.
@@ -89,10 +91,13 @@ export function TeacherManagementPanels({
             onChange={(event) =>
               setNewStudent((value) => ({
                 ...value,
-                studentNumber: event.target.value,
+                studentNumber: normalizeStudentNumberInput(event.target.value),
               }))
             }
-            placeholder="학번"
+            inputMode="numeric"
+            maxLength={5}
+            pattern="[0-9]{5}"
+            placeholder="학번 5자리"
             className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
           />
           <input
@@ -106,30 +111,23 @@ export function TeacherManagementPanels({
             placeholder="이름"
             className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
           />
-          <div className="grid grid-cols-2 gap-3">
-            <input
-              value={newStudent.grade}
-              onChange={(event) =>
-                setNewStudent((value) => ({
-                  ...value,
-                  grade: event.target.value,
-                }))
-              }
-              placeholder="학년"
-              className="h-10 rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-            />
-            <input
-              value={newStudent.classNumber}
-              onChange={(event) =>
-                setNewStudent((value) => ({
-                  ...value,
-                  classNumber: event.target.value,
-                }))
-              }
-              placeholder="반"
-              className="h-10 rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-            />
-          </div>
+          <input
+            value={newStudent.seatNumber}
+            onChange={(event) =>
+              setNewStudent((value) => ({
+                ...value,
+                seatNumber: event.target.value.replace(/\D/g, ''),
+              }))
+            }
+            inputMode="numeric"
+            placeholder="좌석 번호"
+            className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+          />
+          <p className="text-xs text-slate-500">
+            {parsedClassLabel
+              ? `${parsedClassLabel}으로 자동 등록됩니다.`
+              : '학년과 반은 학번 5자리에서 자동으로 가져옵니다.'}
+          </p>
           <button
             type="submit"
             className="h-10 w-full rounded-md bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"

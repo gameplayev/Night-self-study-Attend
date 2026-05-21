@@ -8,9 +8,10 @@ import {
   verifySecret,
 } from './security';
 import { getSupabase } from './supabase';
+import { STUDENT_NUMBER_PATTERN, parseStudentNumber } from '../lib/students';
 
 type UserRole = 'student' | 'teacher';
-type AttendanceAction = 'check_in' | 'check_out' | 'absent';
+type AttendanceAction = 'check_in' | 'check_out' | 'absent' | 'present';
 type DailyPresence = null | 'present' | 'checked_out';
 
 interface ApiError extends Error {
@@ -56,6 +57,7 @@ interface StudentRow {
   name: string;
   grade: number;
   class_number: number;
+  seat_number: number;
 }
 
 interface StudentAccountRow extends AuthUserRow {
@@ -284,6 +286,88 @@ function assertInteger(value: unknown, message: string) {
   return parsed;
 }
 
+function assertPositiveInteger(value: unknown, message: string) {
+  const parsed = assertInteger(value, message);
+  if (parsed <= 0) {
+    fail(message, 400);
+  }
+  return parsed;
+}
+
+function assertStudentNumber(value: unknown) {
+  const studentNumber = assertString(value, '학번을 입력해 주세요.');
+  if (!STUDENT_NUMBER_PATTERN.test(studentNumber)) {
+    fail('학번은 5자리 숫자로 입력해 주세요.', 400);
+  }
+  return studentNumber;
+}
+
+function parseStudentClassOrFail(studentNumber: string) {
+  const parsed = parseStudentNumber(studentNumber);
+  if (!parsed || parsed.grade <= 0 || parsed.classNumber <= 0) {
+    fail('학번에서 학년과 반을 확인하지 못했습니다.', 400);
+  }
+  return parsed;
+}
+
+function assertAttendanceDateKey(value: unknown) {
+  if (value == null || value === '') return null;
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    fail('출결 날짜가 올바르지 않습니다.', 400);
+  }
+  const [year, month, day] = value.split('-').map(Number);
+  const timestamp = Date.UTC(year, month - 1, day);
+  const date = new Date(timestamp);
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    fail('출결 날짜가 올바르지 않습니다.', 400);
+  }
+  if (value > koreaDateKey()) {
+    fail('미래 날짜는 처리할 수 없습니다.', 400);
+  }
+  return value;
+}
+
+function attendanceDateRange(dateKey: string) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const start = new Date(
+    Date.UTC(year, month - 1, day - 1, 15, 0, 0, 0),
+  ).toISOString();
+  const end = new Date(
+    Date.UTC(year, month - 1, day, 14, 59, 59, 999),
+  ).toISOString();
+  return { start, end };
+}
+
+async function timestampForManualAttendanceDate(
+  studentId: number,
+  dateKey: string | null,
+) {
+  if (!dateKey || dateKey === koreaDateKey()) return nowIso();
+
+  const supabase = getSupabase();
+  const { start, end } = attendanceDateRange(dateKey);
+  const { data: latestRecord, error } = await supabase
+    .from('attendance_records')
+    .select('timestamp')
+    .eq('student_id', studentId)
+    .gte('timestamp', start)
+    .lte('timestamp', end)
+    .order('timestamp', { ascending: false })
+    .limit(1)
+    .maybeSingle<{ timestamp: string }>();
+  if (error) failFromDatabase(error);
+  if (!latestRecord) return end;
+
+  const nextTimestamp = new Date(
+    new Date(latestRecord.timestamp).getTime() + 1,
+  ).toISOString();
+  return nextTimestamp <= end ? nextTimestamp : end;
+}
+
 function publicUser(row: AuthUserRow) {
   return {
     id: Number(row.id),
@@ -332,15 +416,15 @@ async function seedInitialData() {
   if (teacherError) failFromDatabase(teacherError);
 
   const students = [
-    ['20101', '김민준', 2, 1],
-    ['20102', '이서연', 2, 1],
-    ['20103', '박지호', 2, 1],
-    ['20211', '최유진', 2, 2],
-    ['20212', '정하린', 2, 2],
-    ['30105', '오도윤', 3, 1],
+    ['20101', '김민준', 2, 1, 1],
+    ['20102', '이서연', 2, 1, 2],
+    ['20103', '박지호', 2, 1, 3],
+    ['20211', '최유진', 2, 2, 11],
+    ['20212', '정하린', 2, 2, 12],
+    ['30105', '오도윤', 3, 1, 5],
   ] as const;
 
-  for (const [studentNumber, name, grade, classNumber] of students) {
+  for (const [studentNumber, name, grade, classNumber, seatNumber] of students) {
     const { data: student, error: studentError } = await supabase
       .from('students')
       .insert({
@@ -348,8 +432,9 @@ async function seedInitialData() {
         name,
         grade,
         class_number: classNumber,
+        seat_number: seatNumber,
       })
-      .select('id, student_number, name, grade, class_number')
+      .select('id, student_number, name, grade, class_number, seat_number')
       .single<StudentRow>();
     if (studentError) failFromDatabase(studentError);
 
@@ -582,7 +667,7 @@ async function studentAccount(studentNumber: string, name: string) {
   const supabase = getSupabase();
   const { data: student, error: studentError } = await supabase
     .from('students')
-    .select('id, student_number, name, grade, class_number')
+    .select('id, student_number, name, grade, class_number, seat_number')
     .eq('student_number', studentNumber)
     .eq('name', name)
     .maybeSingle<StudentRow>();
@@ -626,6 +711,7 @@ function toStudent(row: StudentRow & { device_count: number }) {
     name: row.name,
     grade: Number(row.grade),
     classNumber: Number(row.class_number),
+    seatNumber: Number(row.seat_number),
     deviceCount: Number(row.device_count),
   };
 }
@@ -634,7 +720,7 @@ async function getStudentWithDeviceCount(studentId: number) {
   const supabase = getSupabase();
   const { data: student, error } = await supabase
     .from('students')
-    .select('id, student_number, name, grade, class_number')
+    .select('id, student_number, name, grade, class_number, seat_number')
     .eq('id', studentId)
     .maybeSingle<StudentRow>();
   if (error) failFromDatabase(error);
@@ -649,7 +735,8 @@ async function listStudents() {
   const supabase = getSupabase();
   const { data: students, error } = await supabase
     .from('students')
-    .select('id, student_number, name, grade, class_number')
+    .select('id, student_number, name, grade, class_number, seat_number')
+    .order('seat_number', { ascending: true })
     .order('grade', { ascending: true })
     .order('class_number', { ascending: true })
     .order('student_number', { ascending: true })
@@ -707,7 +794,7 @@ async function attendanceRecords(session: Awaited<ReturnType<typeof requireSessi
   const studentIds = [...new Set(records.map((record) => record.student_id))];
   const { data: students, error: studentError } = await supabase
     .from('students')
-    .select('id, student_number, name, grade, class_number')
+    .select('id, student_number, name, grade, class_number, seat_number')
     .in('id', studentIds)
     .returns<StudentRow[]>();
   if (studentError) failFromDatabase(studentError);
@@ -745,7 +832,7 @@ async function dailyPresence(studentId: number): Promise<DailyPresence> {
     (row) => koreaDateKey(row.timestamp) === today,
   );
   if (!latestRecord || latestRecord.action === 'absent') return null;
-  return latestRecord.action === 'check_in' ? 'present' : 'checked_out';
+  return latestRecord.action === 'check_out' ? 'checked_out' : 'present';
 }
 
 function distanceMeters(
@@ -794,13 +881,14 @@ async function createAttendanceRecord(
   action: AttendanceAction,
   deviceId: string,
   deviceLabel: string,
+  timestamp = nowIso(),
 ) {
   const record = {
     id: randomUUID(),
     studentNumber: student.student_number,
     studentName: student.name,
     action,
-    timestamp: nowIso(),
+    timestamp,
     deviceId,
     deviceLabel,
   };
@@ -896,7 +984,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
 
   if (req.method === 'POST' && pathname === '/api/students/access') {
     const body = await readJson(req);
-    const studentNumber = assertString(body.studentNumber, '학번을 입력해 주세요.');
+    const studentNumber = assertStudentNumber(body.studentNumber);
     const name = assertString(body.name, '이름을 입력해 주세요.');
     checkRateLimit(req, 'student-access', studentNumber);
     const device = await ensureBrowserDevice(req, state, body.deviceLabel);
@@ -952,7 +1040,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
 
   if (req.method === 'POST' && pathname === '/api/students/register-device') {
     const body = await readJson(req);
-    const studentNumber = assertString(body.studentNumber, '학번을 입력해 주세요.');
+    const studentNumber = assertStudentNumber(body.studentNumber);
     const name = assertString(body.name, '이름을 입력해 주세요.');
     checkRateLimit(req, 'student-register', studentNumber);
     const device = await ensureBrowserDevice(req, state, body.deviceLabel);
@@ -989,10 +1077,13 @@ async function handleApi(req: NextRequest, state: ApiState) {
     const session = await requireRole(req, 'teacher');
     requireCsrf(req, session);
     const body = await readJson(req);
-    const studentNumber = assertString(body.studentNumber, '학번을 입력해 주세요.');
+    const studentNumber = assertStudentNumber(body.studentNumber);
     const name = assertString(body.name, '이름을 입력해 주세요.');
-    const grade = assertInteger(body.grade, '학년을 올바르게 입력해 주세요.');
-    const classNumber = assertInteger(body.classNumber, '반을 올바르게 입력해 주세요.');
+    const seatNumber = assertPositiveInteger(
+      body.seatNumber,
+      '좌석 번호를 올바르게 입력해 주세요.',
+    );
+    const { grade, classNumber } = parseStudentClassOrFail(studentNumber);
     const { data: existing, error: existingError } = await supabase
       .from('students')
       .select('id')
@@ -1010,8 +1101,9 @@ async function handleApi(req: NextRequest, state: ApiState) {
         name,
         grade,
         class_number: classNumber,
+        seat_number: seatNumber,
       })
-      .select('id, student_number, name, grade, class_number')
+      .select('id, student_number, name, grade, class_number, seat_number')
       .single<StudentRow>();
     if (studentError) failFromDatabase(studentError);
 
@@ -1036,10 +1128,13 @@ async function handleApi(req: NextRequest, state: ApiState) {
     requireCsrf(req, session);
     const studentId = Number(studentMatch[1]);
     const body = await readJson(req);
-    const studentNumber = assertString(body.studentNumber, '학번을 입력해 주세요.');
+    const studentNumber = assertStudentNumber(body.studentNumber);
     const name = assertString(body.name, '이름을 입력해 주세요.');
-    const grade = assertInteger(body.grade, '학년을 올바르게 입력해 주세요.');
-    const classNumber = assertInteger(body.classNumber, '반을 올바르게 입력해 주세요.');
+    const seatNumber = assertPositiveInteger(
+      body.seatNumber,
+      '좌석 번호를 올바르게 입력해 주세요.',
+    );
+    const { grade, classNumber } = parseStudentClassOrFail(studentNumber);
     const { data: duplicate, error: duplicateError } = await supabase
       .from('students')
       .select('id')
@@ -1058,9 +1153,10 @@ async function handleApi(req: NextRequest, state: ApiState) {
         name,
         grade,
         class_number: classNumber,
+        seat_number: seatNumber,
       })
       .eq('id', studentId)
-      .select('id, student_number, name, grade, class_number')
+      .select('id, student_number, name, grade, class_number, seat_number')
       .maybeSingle<StudentRow>();
     if (error) failFromDatabase(error);
     if (!updatedStudent) {
@@ -1224,7 +1320,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
     const device = await ensureBrowserDevice(req, state, body.deviceLabel);
     const { data: student, error } = await supabase
       .from('students')
-      .select('id, student_number, name, grade, class_number')
+      .select('id, student_number, name, grade, class_number, seat_number')
       .eq('student_number', session.user.studentNumber)
       .maybeSingle<StudentRow>();
     if (error) failFromDatabase(error);
@@ -1249,12 +1345,13 @@ async function handleApi(req: NextRequest, state: ApiState) {
     const body = await readJson(req);
     const studentId = assertInteger(body.studentId, '학생을 선택해 주세요.');
     const action = assertString(body.action, '처리 유형을 선택해 주세요.');
-    if (!['check_in', 'check_out', 'absent'].includes(action)) {
+    if (!['check_in', 'check_out', 'absent', 'present'].includes(action)) {
       fail('처리 유형이 올바르지 않습니다.', 400);
     }
+    const dateKey = assertAttendanceDateKey(body.dateKey);
     const { data: student, error } = await supabase
       .from('students')
-      .select('id, student_number, name, grade, class_number')
+      .select('id, student_number, name, grade, class_number, seat_number')
       .eq('id', studentId)
       .maybeSingle<StudentRow>();
     if (error) failFromDatabase(error);
@@ -1269,6 +1366,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
         action as AttendanceAction,
         'teacher-manual',
         `교사 수동 처리 · ${session.user.displayName}`,
+        await timestampForManualAttendanceDate(studentId, dateKey),
       ),
     );
   }

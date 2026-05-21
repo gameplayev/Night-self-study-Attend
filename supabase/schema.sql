@@ -5,7 +5,8 @@ create table if not exists public.students (
   student_number text not null unique,
   name text not null,
   grade integer not null,
-  class_number integer not null
+  class_number integer not null,
+  seat_number integer not null
 );
 
 create table if not exists public.users (
@@ -29,11 +30,38 @@ create table if not exists public.browser_devices (
 create table if not exists public.attendance_records (
   id uuid primary key,
   student_id bigint not null references public.students(id) on delete cascade,
-  action text not null check (action in ('check_in', 'check_out', 'absent')),
+  action text not null check (action in ('check_in', 'check_out', 'absent', 'present')),
   "timestamp" timestamptz not null,
   device_id text not null,
   device_label text not null
 );
+
+alter table public.students
+  add column if not exists seat_number integer;
+
+with numbered_students as (
+  select
+    id,
+    row_number() over (
+      order by grade asc, class_number asc, student_number asc
+    ) as next_seat_number
+  from public.students
+  where seat_number is null
+)
+update public.students
+set seat_number = numbered_students.next_seat_number
+from numbered_students
+where public.students.id = numbered_students.id;
+
+alter table public.students
+  alter column seat_number set not null;
+
+alter table public.attendance_records
+  drop constraint if exists attendance_records_action_check;
+
+alter table public.attendance_records
+  add constraint attendance_records_action_check
+  check (action in ('check_in', 'check_out', 'absent', 'present'));
 
 create table if not exists public.web_sessions (
   token_hash text primary key,
@@ -47,6 +75,9 @@ create index if not exists idx_devices_student
 
 create index if not exists idx_attendance_student_time
   on public.attendance_records(student_id, "timestamp" desc);
+
+create index if not exists idx_students_seat_number
+  on public.students(seat_number, student_number);
 
 create index if not exists idx_sessions_user
   on public.web_sessions(user_id);

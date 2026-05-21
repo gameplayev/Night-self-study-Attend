@@ -76,6 +76,7 @@ test('student creation sends the expected payload with csrf token', async () => 
         name: '김수정',
         grade: 2,
         classNumber: 3,
+        seatNumber: 14,
         deviceCount: 0,
       }),
     );
@@ -84,8 +85,7 @@ test('student creation sends the expected payload with csrf token', async () => 
     {
       studentNumber: '20999',
       name: '김수정',
-      grade: 2,
-      classNumber: 3,
+      seatNumber: 14,
     },
     'csrf-token',
   );
@@ -96,8 +96,7 @@ test('student creation sends the expected payload with csrf token', async () => 
     JSON.stringify({
       studentNumber: '20999',
       name: '김수정',
-      grade: 2,
-      classNumber: 3,
+      seatNumber: 14,
     }),
   );
 });
