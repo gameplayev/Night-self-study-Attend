@@ -30,6 +30,13 @@ export interface DailyAttendanceSummary {
   status: 'absent' | 'present' | 'checked_out';
 }
 
+export type DailyAttendanceResult =
+  | 'not_checked_in'
+  | 'present'
+  | 'checked_out'
+  | 'normal_attendance'
+  | 'absent';
+
 // 출결 기준일은 브라우저의 로컬 시간대가 아니라 학교가 있는 한국 시간으로 고정한다.
 const ATTENDANCE_TIME_ZONE = 'Asia/Seoul';
 
@@ -59,6 +66,10 @@ export function getAttendanceDateKey(timestamp: string) {
 // 오늘 출결 상태를 계산할 때 사용할 한국 시간 기준의 오늘 날짜 키를 만든다.
 export function getTodayDateKey(referenceDate = new Date()) {
   return getAttendanceDateKey(referenceDate.toISOString());
+}
+
+export function isTodayDateKey(dateKey: string, referenceDate = new Date()) {
+  return dateKey === getTodayDateKey(referenceDate);
 }
 
 export function getDateKeyDaysAgo(daysAgo: number, referenceDate = new Date()) {
@@ -152,19 +163,37 @@ export function getDailyAttendanceSummary(
   };
 }
 
+export function getDailyAttendanceResult(
+  summary: DailyAttendanceSummary,
+  dateKey: string,
+  referenceDate = new Date(),
+): DailyAttendanceResult {
+  if (isTodayDateKey(dateKey, referenceDate)) {
+    if (summary.status === 'absent') return 'not_checked_in';
+    return summary.status;
+  }
+  return summary.status === 'absent' ? 'absent' : 'normal_attendance';
+}
+
 export function getStudentAbsentCount(
   studentNumber: string,
   records: AttendanceRecord[],
+  dateKeys?: string[],
+  referenceDate = new Date(),
 ) {
-  const dateKeys = new Set(
-    records
-      .filter((record) => record.studentNumber === studentNumber)
-      .map((record) => getAttendanceDateKey(record.timestamp)),
+  const todayKey = getTodayDateKey(referenceDate);
+  const trackedDateKeys = new Set(
+    dateKeys ??
+      records.map((record) => getAttendanceDateKey(record.timestamp)),
   );
-  return [...dateKeys].filter(
+  return [...trackedDateKeys].filter(
     (dateKey) =>
-      getDailyAttendanceSummary(studentNumber, records, dateKey).status ===
-      'absent',
+      dateKey < todayKey &&
+      getDailyAttendanceResult(
+        getDailyAttendanceSummary(studentNumber, records, dateKey),
+        dateKey,
+        referenceDate,
+      ) === 'absent',
   ).length;
 }
 

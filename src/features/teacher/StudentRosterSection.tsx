@@ -208,7 +208,7 @@ export function StudentRosterSection({
                       }`}
                     >
                       {status === 'present'
-                        ? '출석 중'
+                        ? '출석중'
                         : status === 'checked_out'
                           ? '퇴실'
                           : '미출석'}

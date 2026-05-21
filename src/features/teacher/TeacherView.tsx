@@ -3,8 +3,11 @@ import {
   AttendanceRecord,
   Student,
   formatKoreanFullDate,
+  getAttendanceDateKey,
+  getDateKeyDaysAgo,
   getDailyPresence,
   getStudentAbsentCount,
+  getTodayDateKey,
 } from '../../lib/attendance';
 import {
   CreateTeacherInput,
@@ -76,15 +79,32 @@ export function TeacherView({
       ),
     [records, sortedStudents],
   );
+  const absenceDateKeys = useMemo(() => {
+    const todayKey = getTodayDateKey();
+    const dateKeys = new Set(
+      records
+        .map((record) => getAttendanceDateKey(record.timestamp))
+        .filter((dateKey) => dateKey < todayKey),
+    );
+    const yesterdayKey = getDateKeyDaysAgo(1);
+    if (yesterdayKey < todayKey) {
+      dateKeys.add(yesterdayKey);
+    }
+    return [...dateKeys].sort();
+  }, [records]);
   const absentCountMap = useMemo(
     () =>
       new Map(
         sortedStudents.map((student) => [
           student.studentNumber,
-          getStudentAbsentCount(student.studentNumber, records),
+          getStudentAbsentCount(
+            student.studentNumber,
+            records,
+            absenceDateKeys,
+          ),
         ]),
       ),
-    [records, sortedStudents],
+    [absenceDateKeys, records, sortedStudents],
   );
   const presentCount = [...presenceMap.values()].filter(
     (status) => status === 'present',

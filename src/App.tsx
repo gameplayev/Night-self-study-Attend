@@ -275,17 +275,19 @@ function App() {
         dateKey,
       );
       setRecords((value) => [record, ...value]);
+      const actionLabel =
+        action === 'check_in'
+          ? '출석'
+          : action === 'check_out'
+            ? '퇴실'
+            : action === 'present'
+              ? '정상출석'
+              : dateKey
+                ? '결석'
+                : '미출석';
       setMessage({
         tone: 'success',
-        text: `${student.name} 학생의 ${
-          action === 'check_in'
-            ? '출석'
-            : action === 'check_out'
-              ? '퇴실'
-              : action === 'present'
-                ? '출석'
-                : '미출석'
-        }을 처리했습니다.`,
+        text: `${student.name} 학생의 ${actionLabel}을 처리했습니다.`,
       });
     } catch (error) {
       setMessage({

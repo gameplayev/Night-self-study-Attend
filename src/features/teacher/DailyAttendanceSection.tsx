@@ -6,8 +6,27 @@ import {
   formatKoreanDateTime,
   getAttendanceDateKey,
   getDateKeyDaysAgo,
+  getDailyAttendanceResult,
   getDailyAttendanceSummary,
 } from '../../lib/attendance';
+import type { DailyAttendanceResult } from '../../lib/attendance';
+
+function statusClassName(status: DailyAttendanceResult) {
+  if (status === 'checked_out') return 'bg-amber-50 text-amber-700';
+  if (status === 'present' || status === 'normal_attendance') {
+    return 'bg-emerald-50 text-emerald-700';
+  }
+  if (status === 'absent') return 'bg-rose-50 text-rose-700';
+  return 'bg-slate-100 text-slate-600';
+}
+
+function statusLabel(status: DailyAttendanceResult) {
+  if (status === 'checked_out') return '퇴실';
+  if (status === 'present') return '출석중';
+  if (status === 'normal_attendance') return '정상 출석';
+  if (status === 'absent') return '결석';
+  return '미출석';
+}
 
 export function DailyAttendanceSection({
   students,
@@ -41,17 +60,21 @@ export function DailyAttendanceSection({
     return [...dateKeys].sort((left, right) => right.localeCompare(left));
   }, [recordsByDate]);
   const activeDateKey = selectedDateKey ?? getDateKeyDaysAgo(0);
-  // 실제 표는 모든 학생을 기준으로 만들기 때문에 기록이 없는 학생도 미출석으로 남는다.
+  // 실제 표는 모든 학생을 기준으로 만들기 때문에 기록이 없는 학생도 날짜 규칙에 맞게 남는다.
   const selectedDateRows = useMemo(
     () =>
-      students.map((student) => ({
-        student,
-        summary: getDailyAttendanceSummary(
+      students.map((student) => {
+        const summary = getDailyAttendanceSummary(
           student.studentNumber,
           records,
           activeDateKey,
-        ),
-      })),
+        );
+        return {
+          student,
+          summary,
+          status: getDailyAttendanceResult(summary, activeDateKey),
+        };
+      }),
     [activeDateKey, records, students],
   );
 
@@ -70,15 +93,15 @@ export function DailyAttendanceSection({
           {formatAttendanceDateLabel(activeDateKey)} 출결 기록
         </h2>
         <div className="mt-5 overflow-x-auto rounded-md border border-slate-200">
-          <table className="min-w-[1120px] divide-y divide-slate-200 text-left text-sm">
+          <table className="min-w-[1220px] divide-y divide-slate-200 text-left text-sm">
             <colgroup>
               <col className="w-44" />
               <col className="w-24" />
               <col className="w-40" />
               <col className="w-32" />
+              <col className="w-60" />
+              <col className="w-60" />
               <col className="w-64" />
-              <col className="w-64" />
-              <col className="w-36" />
             </colgroup>
             <thead className="bg-slate-50 text-slate-600">
               <tr>
@@ -96,7 +119,7 @@ export function DailyAttendanceSection({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
-              {selectedDateRows.map(({ student, summary }) => (
+              {selectedDateRows.map(({ student, summary, status }) => (
                 <tr key={student.id}>
                   <td className="whitespace-nowrap px-5 py-3">
                     <p className="font-medium text-slate-900">{student.name}</p>
@@ -112,19 +135,11 @@ export function DailyAttendanceSection({
                   </td>
                   <td className="whitespace-nowrap px-5 py-3">
                     <span
-                      className={`rounded px-2 py-1 text-xs font-semibold ${
-                        summary.status === 'checked_out'
-                          ? 'bg-amber-50 text-amber-700'
-                          : summary.status === 'present'
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : 'bg-slate-100 text-slate-600'
-                      }`}
+                      className={`rounded px-2 py-1 text-xs font-semibold ${statusClassName(
+                        status,
+                      )}`}
                     >
-                      {summary.status === 'checked_out'
-                        ? '퇴실'
-                        : summary.status === 'present'
-                          ? '출석 중'
-                          : '미출석'}
+                      {statusLabel(status)}
                     </span>
                   </td>
                   <td className="whitespace-nowrap px-5 py-3 text-slate-600">
@@ -150,16 +165,16 @@ export function DailyAttendanceSection({
                         }
                         className="h-8 rounded-md border border-emerald-300 px-3 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50"
                       >
-                        출석
+                        정상출석 처리
                       </button>
                       <button
                         type="button"
                         onClick={() =>
                           void onManualAttendance(student, 'absent', activeDateKey)
                         }
-                        className="h-8 rounded-md border border-slate-300 px-3 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                        className="h-8 rounded-md border border-rose-300 px-3 text-xs font-medium text-rose-700 transition hover:bg-rose-50"
                       >
-                        미출석
+                        결석 처리
                       </button>
                     </div>
                   </td>

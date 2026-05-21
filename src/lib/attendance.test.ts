@@ -3,6 +3,7 @@ import {
   getDailyAttendanceSummary,
   getCurrentPresence,
   getDailyPresence,
+  getDailyAttendanceResult,
   formatKoreanFullDate,
   getStudentAbsentCount,
 } from './attendance';
@@ -58,6 +59,46 @@ test('summarizes a student attendance for a selected date', () => {
     checkOutAt: null,
     status: 'absent',
   });
+});
+
+test('shows current dates as live presence states', () => {
+  const summary = getDailyAttendanceSummary('20101', records, '2026-05-17');
+
+  expect(
+    getDailyAttendanceResult(
+      summary,
+      '2026-05-17',
+      new Date('2026-05-17T14:00:00.000Z'),
+    ),
+  ).toBe('checked_out');
+});
+
+test('shows past dates as final attendance results', () => {
+  const attendedSummary = getDailyAttendanceSummary(
+    '20101',
+    records,
+    '2026-05-17',
+  );
+  const absentSummary = getDailyAttendanceSummary(
+    '20102',
+    records,
+    '2026-05-17',
+  );
+
+  expect(
+    getDailyAttendanceResult(
+      attendedSummary,
+      '2026-05-17',
+      new Date('2026-05-18T14:00:00.000Z'),
+    ),
+  ).toBe('normal_attendance');
+  expect(
+    getDailyAttendanceResult(
+      absentSummary,
+      '2026-05-17',
+      new Date('2026-05-18T14:00:00.000Z'),
+    ),
+  ).toBe('absent');
 });
 
 test('uses the latest teacher correction as the current daily status', () => {
@@ -178,7 +219,22 @@ test('counts one absence per date using the final daily status', () => {
     ...records,
   ];
 
-  expect(getStudentAbsentCount('20101', correctedRecords)).toBe(1);
+  expect(
+    getStudentAbsentCount(
+      '20101',
+      correctedRecords,
+      ['2026-05-17', '2026-05-18'],
+      new Date('2026-05-19T14:00:00.000Z'),
+    ),
+  ).toBe(1);
+  expect(
+    getStudentAbsentCount(
+      '20102',
+      correctedRecords,
+      ['2026-05-17', '2026-05-18'],
+      new Date('2026-05-19T14:00:00.000Z'),
+    ),
+  ).toBe(2);
 });
 
 test('formats a Korean full date without duplicated day suffix', () => {
