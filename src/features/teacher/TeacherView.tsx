@@ -108,7 +108,7 @@ export function TeacherView({
         <StatCard label="퇴실 완료" value={checkedOutCount} tone="amber" />
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <StudentRosterSection
           students={sortedStudents}
           presenceMap={presenceMap}

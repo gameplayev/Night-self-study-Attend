@@ -484,7 +484,7 @@ function App() {
   return (
     <main className="min-h-screen bg-slate-100 text-slate-900">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <img
               src="/logo.jpeg"
@@ -516,7 +516,7 @@ function App() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
         {isBooting || !device ? (
           <section className="rounded-md border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm">
             데이터를 불러오는 중입니다.

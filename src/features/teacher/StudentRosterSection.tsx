@@ -80,22 +80,32 @@ export function StudentRosterSection({
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
           placeholder="학번 또는 이름 검색"
-          className="h-10 rounded-md border border-slate-300 px-3 text-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+          className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100 sm:w-72"
         />
       </div>
 
-      <div className="mt-5 overflow-hidden rounded-md border border-slate-200">
-        <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+      <div className="mt-5 overflow-x-auto rounded-md border border-slate-200">
+        <table className="min-w-[1320px] divide-y divide-slate-200 text-left text-sm">
+          <colgroup>
+            <col className="w-24" />
+            <col className="w-32" />
+            <col className="w-36" />
+            <col className="w-40" />
+            <col className="w-24" />
+            <col className="w-24" />
+            <col className="w-32" />
+            <col className="w-[560px]" />
+          </colgroup>
           <thead className="bg-slate-50 text-slate-600">
             <tr>
-              <th className="px-4 py-3 font-medium">좌석</th>
-              <th className="px-4 py-3 font-medium">학번</th>
-              <th className="px-4 py-3 font-medium">이름</th>
-              <th className="px-4 py-3 font-medium">학급</th>
-              <th className="px-4 py-3 font-medium">기기</th>
-              <th className="px-4 py-3 font-medium">결석</th>
-              <th className="px-4 py-3 font-medium">상태</th>
-              <th className="px-4 py-3 font-medium">관리</th>
+              <th className="whitespace-nowrap px-5 py-3 font-medium">좌석</th>
+              <th className="whitespace-nowrap px-5 py-3 font-medium">학번</th>
+              <th className="whitespace-nowrap px-5 py-3 font-medium">이름</th>
+              <th className="whitespace-nowrap px-5 py-3 font-medium">학급</th>
+              <th className="whitespace-nowrap px-5 py-3 font-medium">기기</th>
+              <th className="whitespace-nowrap px-5 py-3 font-medium">결석</th>
+              <th className="whitespace-nowrap px-5 py-3 font-medium">상태</th>
+              <th className="whitespace-nowrap px-5 py-3 font-medium">관리</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 bg-white">
@@ -108,7 +118,7 @@ export function StudentRosterSection({
                 : null;
               return (
                 <tr key={student.id}>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="whitespace-nowrap px-5 py-3 text-slate-600">
                     {isEditing ? (
                       <input
                         value={editStudent.seatNumber}
@@ -132,7 +142,7 @@ export function StudentRosterSection({
                       student.seatNumber
                     )}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="whitespace-nowrap px-5 py-3 text-slate-600">
                     {isEditing ? (
                       <input
                         value={editStudent.studentNumber}
@@ -157,7 +167,7 @@ export function StudentRosterSection({
                       student.studentNumber
                     )}
                   </td>
-                  <td className="px-4 py-3 font-medium text-slate-900">
+                  <td className="whitespace-nowrap px-5 py-3 font-medium text-slate-900">
                     {isEditing ? (
                       <input
                         value={editStudent.name}
@@ -172,7 +182,7 @@ export function StudentRosterSection({
                       student.name
                     )}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="whitespace-nowrap px-5 py-3 text-slate-600">
                     {isEditing ? (
                       parsedClassLabel ?? '학번 확인 필요'
                     ) : (
@@ -181,13 +191,13 @@ export function StudentRosterSection({
                       </>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="whitespace-nowrap px-5 py-3 text-slate-600">
                     {student.deviceCount}/2
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="whitespace-nowrap px-5 py-3 text-slate-600">
                     {absentCountMap.get(student.studentNumber) ?? 0}회
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="whitespace-nowrap px-5 py-3">
                     <span
                       className={`rounded px-2 py-1 text-xs font-semibold ${
                         status === 'present'
@@ -204,7 +214,7 @@ export function StudentRosterSection({
                           : '미출석'}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-5 py-3">
                     <div className="flex flex-wrap gap-2">
                       {isEditing ? (
                         <>

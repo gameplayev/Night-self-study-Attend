@@ -63,41 +63,54 @@ export function DailyAttendanceSection({
   }, [selectableDateKeys, selectedDateKey]);
 
   return (
-    <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+    <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
       <div className="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
         <p className="text-sm font-medium text-slate-500">출석 기록</p>
         <h2 className="mt-1 text-xl font-semibold text-slate-900">
           {formatAttendanceDateLabel(activeDateKey)} 출결 기록
         </h2>
-        <div className="mt-5 overflow-hidden rounded-md border border-slate-200">
-          <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+        <div className="mt-5 overflow-x-auto rounded-md border border-slate-200">
+          <table className="min-w-[1120px] divide-y divide-slate-200 text-left text-sm">
+            <colgroup>
+              <col className="w-44" />
+              <col className="w-24" />
+              <col className="w-40" />
+              <col className="w-32" />
+              <col className="w-64" />
+              <col className="w-64" />
+              <col className="w-36" />
+            </colgroup>
             <thead className="bg-slate-50 text-slate-600">
               <tr>
-                <th className="px-4 py-3 font-medium">학생</th>
-                <th className="px-4 py-3 font-medium">좌석</th>
-                <th className="px-4 py-3 font-medium">학급</th>
-                <th className="px-4 py-3 font-medium">상태</th>
-                <th className="px-4 py-3 font-medium">출석 시각</th>
-                <th className="px-4 py-3 font-medium">퇴실 시각</th>
-                <th className="px-4 py-3 font-medium">처리</th>
+                <th className="whitespace-nowrap px-5 py-3 font-medium">학생</th>
+                <th className="whitespace-nowrap px-5 py-3 font-medium">좌석</th>
+                <th className="whitespace-nowrap px-5 py-3 font-medium">학급</th>
+                <th className="whitespace-nowrap px-5 py-3 font-medium">상태</th>
+                <th className="whitespace-nowrap px-5 py-3 font-medium">
+                  출석 시각
+                </th>
+                <th className="whitespace-nowrap px-5 py-3 font-medium">
+                  퇴실 시각
+                </th>
+                <th className="whitespace-nowrap px-5 py-3 font-medium">처리</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
               {selectedDateRows.map(({ student, summary }) => (
                 <tr key={student.id}>
-                  <td className="px-4 py-3">
+                  <td className="whitespace-nowrap px-5 py-3">
                     <p className="font-medium text-slate-900">{student.name}</p>
                     <p className="text-xs text-slate-500">
                       {student.studentNumber}
                     </p>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="whitespace-nowrap px-5 py-3 text-slate-600">
                     {student.seatNumber}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="whitespace-nowrap px-5 py-3 text-slate-600">
                     {student.grade}학년 {student.classNumber}반
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="whitespace-nowrap px-5 py-3">
                     <span
                       className={`rounded px-2 py-1 text-xs font-semibold ${
                         summary.status === 'checked_out'
@@ -114,17 +127,17 @@ export function DailyAttendanceSection({
                           : '미출석'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="whitespace-nowrap px-5 py-3 text-slate-600">
                     {summary.checkInAt
                       ? formatKoreanDateTime(summary.checkInAt)
                       : '-'}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">
+                  <td className="whitespace-nowrap px-5 py-3 text-slate-600">
                     {summary.checkOutAt
                       ? formatKoreanDateTime(summary.checkOutAt)
                       : '-'}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-5 py-3">
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
@@ -156,7 +169,7 @@ export function DailyAttendanceSection({
                 <tr>
                   <td
                     colSpan={7}
-                    className="px-4 py-8 text-center text-sm text-slate-500"
+                    className="px-5 py-8 text-center text-sm text-slate-500"
                   >
                     등록된 학생이 없습니다.
                   </td>
