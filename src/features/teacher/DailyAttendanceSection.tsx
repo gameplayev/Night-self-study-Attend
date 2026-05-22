@@ -75,22 +75,33 @@ export function DailyAttendanceSection({
     return [...dateKeys].sort((left, right) => right.localeCompare(left));
   }, [recordsByDate]);
   const activeDateKey = selectedDateKey ?? getDateKeyDaysAgo(0);
-  // 실제 표는 모든 학생을 기준으로 만들기 때문에 기록이 없는 학생도 날짜 규칙에 맞게 남는다.
+  const activeDateStudentNumbers = useMemo(
+    () =>
+      new Set(
+        (recordsByDate.find(([dateKey]) => dateKey === activeDateKey)?.[1] ?? [])
+          .map((record) => record.studentNumber),
+      ),
+    [activeDateKey, recordsByDate],
+  );
+  // 출결기록 표는 DB에 저장된 이벤트가 있는 학생만 보여준다.
+  // 저장 기록이 없는 학생까지 결석으로 계산해 보여주면 삭제 후에도 기록이 남은 것처럼 보이기 때문이다.
   const selectedDateRows = useMemo(
     () =>
-      students.map((student) => {
-        const summary = getDailyAttendanceSummary(
-          student.studentNumber,
-          records,
-          activeDateKey,
-        );
-        return {
-          student,
-          summary,
-          status: getDailyAttendanceResult(summary, activeDateKey),
-        };
-      }),
-    [activeDateKey, records, students],
+      students
+        .filter((student) => activeDateStudentNumbers.has(student.studentNumber))
+        .map((student) => {
+          const summary = getDailyAttendanceSummary(
+            student.studentNumber,
+            records,
+            activeDateKey,
+          );
+          return {
+            student,
+            summary,
+            status: getDailyAttendanceResult(summary, activeDateKey),
+          };
+        }),
+    [activeDateKey, activeDateStudentNumbers, records, students],
   );
   const filteredDateRows = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -232,7 +243,9 @@ export function DailyAttendanceSection({
                   >
                     {students.length === 0
                       ? '등록된 학생이 없습니다.'
-                      : '검색 결과가 없습니다.'}
+                      : query.trim()
+                        ? '검색 결과가 없습니다.'
+                        : '이 날짜에 저장된 출결기록이 없습니다.'}
                   </td>
                 </tr>
               )}

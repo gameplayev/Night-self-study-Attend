@@ -236,14 +236,17 @@ export async function deleteAttendanceRecordsByDate(
   dateKey: string,
   csrfToken: string,
 ) {
-  return apiRequest<void>(`/api/attendance?dateKey=${encodeURIComponent(dateKey)}`, {
-    method: 'DELETE',
-    csrfToken,
-  });
+  return apiRequest<{ deletedCount: number }>(
+    `/api/attendance?dateKey=${encodeURIComponent(dateKey)}`,
+    {
+      method: 'DELETE',
+      csrfToken,
+    },
+  );
 }
 
 export async function deleteAllAttendanceRecords(csrfToken: string) {
-  return apiRequest<void>('/api/attendance', {
+  return apiRequest<{ deletedCount: number }>('/api/attendance', {
     method: 'DELETE',
     csrfToken,
   });

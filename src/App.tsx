@@ -485,13 +485,23 @@ function App() {
     if (!session) return;
     if (!window.confirm(`${dateKey} 출결기록을 삭제할까요?`)) return;
     try {
-      await deleteAttendanceRecordsByDate(dateKey, session.csrfToken);
+      const result = await deleteAttendanceRecordsByDate(
+        dateKey,
+        session.csrfToken,
+      );
+      if (result.deletedCount === 0) {
+        setMessage({
+          tone: 'error',
+          text: `${dateKey}에 삭제할 저장 기록이 없습니다.`,
+        });
+        return;
+      }
       setRecords((value) =>
         value.filter((record) => getAttendanceDateKey(record.timestamp) !== dateKey),
       );
       setMessage({
         tone: 'success',
-        text: `${dateKey} 출결기록을 삭제했습니다.`,
+        text: `${dateKey} 출결기록 ${result.deletedCount}건을 삭제했습니다.`,
       });
     } catch (error) {
       setMessage({
@@ -508,11 +518,18 @@ function App() {
     if (!session) return;
     if (!window.confirm('전체 출결기록을 모두 삭제할까요?')) return;
     try {
-      await deleteAllAttendanceRecords(session.csrfToken);
+      const result = await deleteAllAttendanceRecords(session.csrfToken);
+      if (result.deletedCount === 0) {
+        setMessage({
+          tone: 'error',
+          text: '삭제할 저장 기록이 없습니다.',
+        });
+        return;
+      }
       setRecords([]);
       setMessage({
         tone: 'success',
-        text: '전체 출결기록을 삭제했습니다.',
+        text: `전체 출결기록 ${result.deletedCount}건을 삭제했습니다.`,
       });
     } catch (error) {
       setMessage({

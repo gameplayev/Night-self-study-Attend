@@ -1323,9 +1323,11 @@ async function handleApi(req: NextRequest, state: ApiState) {
     } else {
       query = query.not('id', 'is', null);
     }
-    const { error } = await query;
+    const { data: deletedRecords, error } = await query.select('id');
     if (error) failFromDatabase(error);
-    return sendEmpty(state);
+    return sendJson(state, 200, {
+      deletedCount: deletedRecords?.length ?? 0,
+    });
   }
 
   if (req.method === 'POST' && pathname === '/api/attendance/self') {
