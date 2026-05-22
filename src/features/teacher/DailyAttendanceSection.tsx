@@ -69,12 +69,10 @@ export function DailyAttendanceSection({
     [recordsByDate],
   );
   const selectableDateKeys = useMemo(() => {
-    const dateKeys = new Set(recordsByDate.map(([dateKey]) => dateKey));
-    dateKeys.add(getDateKeyDaysAgo(0));
-    dateKeys.add(getDateKeyDaysAgo(1));
-    return [...dateKeys].sort((left, right) => right.localeCompare(left));
+    const dateKeys = recordsByDate.map(([dateKey]) => dateKey);
+    return dateKeys.sort((left, right) => right.localeCompare(left));
   }, [recordsByDate]);
-  const activeDateKey = selectedDateKey ?? getDateKeyDaysAgo(0);
+  const activeDateKey = selectedDateKey ?? selectableDateKeys[0] ?? getDateKeyDaysAgo(0);
   const activeDateStudentNumbers = useMemo(
     () =>
       new Set(
@@ -117,7 +115,7 @@ export function DailyAttendanceSection({
     if (selectedDateKey && selectableDateKeys.includes(selectedDateKey)) {
       return;
     }
-    setSelectedDateKey(getDateKeyDaysAgo(0));
+    setSelectedDateKey(selectableDateKeys[0] ?? null);
   }, [selectableDateKeys, selectedDateKey]);
 
   return (
@@ -259,6 +257,11 @@ export function DailyAttendanceSection({
           출결 기록
         </h2>
         <div className="mt-5 space-y-2">
+          {selectableDateKeys.length === 0 && (
+            <p className="rounded-md border border-slate-200 px-4 py-6 text-center text-sm text-slate-500">
+              저장된 출결기록이 없습니다.
+            </p>
+          )}
           {selectableDateKeys.map((dateKey) => {
             const recordCount = recordCountByDate.get(dateKey) ?? 0;
             return (
