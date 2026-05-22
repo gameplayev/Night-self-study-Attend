@@ -31,6 +31,8 @@ export function TeacherView({
   onAddStudent,
   onDeleteStudent,
   onManualAttendance,
+  onDeleteAttendanceDate,
+  onDeleteAllAttendanceRecords,
   onResetDevices,
   onUpdateStudent,
   onUpdateTeacher,
@@ -47,6 +49,8 @@ export function TeacherView({
     action: ManualAttendanceAction,
     dateKey?: string,
   ) => Promise<void>;
+  onDeleteAttendanceDate: (dateKey: string) => Promise<void>;
+  onDeleteAllAttendanceRecords: () => Promise<void>;
   onResetDevices: (student: Student) => Promise<void>;
   onUpdateStudent: (
     student: Student,
@@ -152,6 +156,8 @@ export function TeacherView({
         students={sortedStudents}
         records={records}
         onManualAttendance={onManualAttendance}
+        onDeleteAttendanceDate={onDeleteAttendanceDate}
+        onDeleteAllAttendanceRecords={onDeleteAllAttendanceRecords}
       />
 
       {message && (

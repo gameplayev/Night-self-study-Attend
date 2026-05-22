@@ -32,6 +32,8 @@ export function DailyAttendanceSection({
   students,
   records,
   onManualAttendance,
+  onDeleteAttendanceDate,
+  onDeleteAllAttendanceRecords,
 }: {
   students: Student[];
   records: AttendanceRecord[];
@@ -40,8 +42,11 @@ export function DailyAttendanceSection({
     action: 'present' | 'absent',
     dateKey: string,
   ) => Promise<void>;
+  onDeleteAttendanceDate: (dateKey: string) => Promise<void>;
+  onDeleteAllAttendanceRecords: () => Promise<void>;
 }) {
   const [selectedDateKey, setSelectedDateKey] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
   // 기록 이벤트를 날짜별로 묶어 오른쪽 날짜 선택 목록과 왼쪽 일일 표가 같은 기준을 공유하게 한다.
   const recordsByDate = useMemo(() => {
     const grouped = new Map<string, AttendanceRecord[]>();
@@ -53,6 +58,16 @@ export function DailyAttendanceSection({
       right.localeCompare(left),
     );
   }, [records]);
+  const recordCountByDate = useMemo(
+    () =>
+      new Map(
+        recordsByDate.map(([dateKey, dailyRecords]) => [
+          dateKey,
+          dailyRecords.length,
+        ]),
+      ),
+    [recordsByDate],
+  );
   const selectableDateKeys = useMemo(() => {
     const dateKeys = new Set(recordsByDate.map(([dateKey]) => dateKey));
     dateKeys.add(getDateKeyDaysAgo(0));
@@ -77,6 +92,15 @@ export function DailyAttendanceSection({
       }),
     [activeDateKey, records, students],
   );
+  const filteredDateRows = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) return selectedDateRows;
+    return selectedDateRows.filter(({ student }) =>
+      `${student.seatNumber} ${student.studentNumber} ${student.name} ${student.grade}학년 ${student.classNumber}반`
+        .toLowerCase()
+        .includes(normalizedQuery),
+    );
+  }, [query, selectedDateRows]);
 
   useEffect(() => {
     if (selectedDateKey && selectableDateKeys.includes(selectedDateKey)) {
@@ -88,10 +112,30 @@ export function DailyAttendanceSection({
   return (
     <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
       <div className="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
-        <p className="text-sm font-medium text-slate-500">출석 기록</p>
-        <h2 className="mt-1 text-xl font-semibold text-slate-900">
-          {formatAttendanceDateLabel(activeDateKey)} 출결 기록
-        </h2>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-slate-500">출석 기록</p>
+            <h2 className="mt-1 text-xl font-semibold text-slate-900">
+              {formatAttendanceDateLabel(activeDateKey)} 출결 기록
+            </h2>
+          </div>
+          <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="좌석, 학번 또는 이름 검색"
+              className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100 sm:w-72"
+            />
+            <button
+              type="button"
+              onClick={() => void onDeleteAllAttendanceRecords()}
+              disabled={records.length === 0}
+              className="h-10 rounded-md border border-rose-300 px-4 text-sm font-medium text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              전체 삭제
+            </button>
+          </div>
+        </div>
         <div className="mt-5 overflow-x-auto rounded-md border border-slate-200">
           <table className="min-w-[1220px] divide-y divide-slate-200 text-left text-sm">
             <colgroup>
@@ -119,7 +163,7 @@ export function DailyAttendanceSection({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
-              {selectedDateRows.map(({ student, summary, status }) => (
+              {filteredDateRows.map(({ student, summary, status }) => (
                 <tr key={student.id}>
                   <td className="whitespace-nowrap px-5 py-3">
                     <p className="font-medium text-slate-900">{student.name}</p>
@@ -180,13 +224,15 @@ export function DailyAttendanceSection({
                   </td>
                 </tr>
               ))}
-              {selectedDateRows.length === 0 && (
+              {filteredDateRows.length === 0 && (
                 <tr>
                   <td
                     colSpan={7}
                     className="px-5 py-8 text-center text-sm text-slate-500"
                   >
-                    등록된 학생이 없습니다.
+                    {students.length === 0
+                      ? '등록된 학생이 없습니다.'
+                      : '검색 결과가 없습니다.'}
                   </td>
                 </tr>
               )}
@@ -200,22 +246,37 @@ export function DailyAttendanceSection({
           출결 기록
         </h2>
         <div className="mt-5 space-y-2">
-          {selectableDateKeys.map((dateKey) => (
-            <button
-              key={dateKey}
-              type="button"
-              onClick={() => setSelectedDateKey(dateKey)}
-              className={`flex h-12 w-full items-center rounded-md border px-4 text-sm transition ${
-                activeDateKey === dateKey
-                  ? 'border-slate-900 bg-slate-900 text-white'
-                  : 'border-slate-200 text-slate-700 hover:bg-slate-50'
-              }`}
-            >
-              <span className="font-semibold">
-                {formatAttendanceDateLabel(dateKey)} 출결 기록
-              </span>
-            </button>
-          ))}
+          {selectableDateKeys.map((dateKey) => {
+            const recordCount = recordCountByDate.get(dateKey) ?? 0;
+            return (
+              <div key={dateKey} className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedDateKey(dateKey)}
+                  className={`flex h-12 min-w-0 flex-1 items-center justify-between rounded-md border px-4 text-sm transition ${
+                    activeDateKey === dateKey
+                      ? 'border-slate-900 bg-slate-900 text-white'
+                      : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className="truncate font-semibold">
+                    {formatAttendanceDateLabel(dateKey)} 출결 기록
+                  </span>
+                  <span className="ml-3 shrink-0 text-xs opacity-80">
+                    {recordCount}건
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void onDeleteAttendanceDate(dateKey)}
+                  disabled={recordCount === 0}
+                  className="h-12 rounded-md border border-rose-300 px-3 text-xs font-medium text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  삭제
+                </button>
+              </div>
+            );
+          })}
         </div>
       </aside>
     </section>

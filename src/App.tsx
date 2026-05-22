@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { AttendanceRecord, Student } from './lib/attendance';
+import { useEffect, useRef, useState } from 'react';
+import { AttendanceRecord, Student, getAttendanceDateKey } from './lib/attendance';
 import {
   AuthSession,
   CreateTeacherInput,
@@ -13,6 +13,8 @@ import {
   checkStudentAccess,
   createTeacher,
   createStudent,
+  deleteAllAttendanceRecords,
+  deleteAttendanceRecordsByDate,
   deleteStudent,
   listAttendanceRecords,
   listStudents,
@@ -61,6 +63,8 @@ function App() {
     useState<LocationCapability | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [message, setMessage] = useState<FeedbackMessage | null>(null);
+  const [isLogoNoticeVisible, setIsLogoNoticeVisible] = useState(false);
+  const logoNoticeTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     // 앱이 시작되면 기기 표시 정보와 서버 세션을 함께 복원한다.
@@ -73,6 +77,15 @@ function App() {
     void loadWorkspace(session);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
+
+  useEffect(
+    () => () => {
+      if (logoNoticeTimerRef.current) {
+        window.clearTimeout(logoNoticeTimerRef.current);
+      }
+    },
+    [],
+  );
 
   async function bootstrap() {
     setIsBooting(true);
@@ -468,6 +481,61 @@ function App() {
     }
   }
 
+  async function handleDeleteAttendanceDate(dateKey: string) {
+    if (!session) return;
+    if (!window.confirm(`${dateKey} 출결기록을 삭제할까요?`)) return;
+    try {
+      await deleteAttendanceRecordsByDate(dateKey, session.csrfToken);
+      setRecords((value) =>
+        value.filter((record) => getAttendanceDateKey(record.timestamp) !== dateKey),
+      );
+      setMessage({
+        tone: 'success',
+        text: `${dateKey} 출결기록을 삭제했습니다.`,
+      });
+    } catch (error) {
+      setMessage({
+        tone: 'error',
+        text:
+          error instanceof Error
+            ? error.message
+            : '출결기록을 삭제하지 못했습니다.',
+      });
+    }
+  }
+
+  async function handleDeleteAllAttendanceRecords() {
+    if (!session) return;
+    if (!window.confirm('전체 출결기록을 모두 삭제할까요?')) return;
+    try {
+      await deleteAllAttendanceRecords(session.csrfToken);
+      setRecords([]);
+      setMessage({
+        tone: 'success',
+        text: '전체 출결기록을 삭제했습니다.',
+      });
+    } catch (error) {
+      setMessage({
+        tone: 'error',
+        text:
+          error instanceof Error
+            ? error.message
+            : '전체 출결기록을 삭제하지 못했습니다.',
+      });
+    }
+  }
+
+  function handleLogoClick() {
+    setIsLogoNoticeVisible(true);
+    if (logoNoticeTimerRef.current) {
+      window.clearTimeout(logoNoticeTimerRef.current);
+    }
+    logoNoticeTimerRef.current = window.setTimeout(() => {
+      setIsLogoNoticeVisible(false);
+      logoNoticeTimerRef.current = null;
+    }, 1000);
+  }
+
   if (!session) {
     return (
       <LoginView
@@ -487,12 +555,24 @@ function App() {
     <main className="min-h-screen bg-slate-100 text-slate-900">
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
-            <img
-              src="/logo.jpeg"
-              alt="고색고등학교"
-              className="h-12 w-12 shrink-0 object-contain"
-            />
+          <div className="relative flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleLogoClick}
+              className="shrink-0 cursor-pointer rounded-md focus:outline-none focus:ring-2 focus:ring-sky-200"
+              aria-label="고색고등학교 로고"
+            >
+              <img
+                src="/logo.jpeg"
+                alt="고색고등학교"
+                className="h-12 w-12 object-contain"
+              />
+            </button>
+            {isLogoNoticeVisible && (
+              <p className="absolute left-0 top-14 z-10 w-max rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm">
+                야자 째지 말고 열심히 공부해 얘들아
+              </p>
+            )}
             <div>
               <p className="text-sm font-medium text-slate-500">야간자율학습</p>
               <h1 className="text-2xl font-semibold">출석 관리 시스템</h1>
@@ -542,6 +622,8 @@ function App() {
             onAddStudent={handleAddStudent}
             onDeleteStudent={handleDeleteStudent}
             onManualAttendance={handleManualAttendance}
+            onDeleteAttendanceDate={handleDeleteAttendanceDate}
+            onDeleteAllAttendanceRecords={handleDeleteAllAttendanceRecords}
             onResetDevices={handleResetDevices}
             onUpdateStudent={handleUpdateStudent}
             onUpdateTeacher={handleUpdateTeacher}

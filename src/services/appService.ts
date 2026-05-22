@@ -232,6 +232,23 @@ export async function listAttendanceRecords() {
   return apiRequest<AttendanceRecord[]>('/api/attendance');
 }
 
+export async function deleteAttendanceRecordsByDate(
+  dateKey: string,
+  csrfToken: string,
+) {
+  return apiRequest<void>(`/api/attendance?dateKey=${encodeURIComponent(dateKey)}`, {
+    method: 'DELETE',
+    csrfToken,
+  });
+}
+
+export async function deleteAllAttendanceRecords(csrfToken: string) {
+  return apiRequest<void>('/api/attendance', {
+    method: 'DELETE',
+    csrfToken,
+  });
+}
+
 export async function submitAttendance(
   csrfToken: string,
   device: DeviceIdentity,

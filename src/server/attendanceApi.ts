@@ -1312,6 +1312,22 @@ async function handleApi(req: NextRequest, state: ApiState) {
     return sendJson(state, 200, await attendanceRecords(session));
   }
 
+  if (req.method === 'DELETE' && pathname === '/api/attendance') {
+    const session = await requireRole(req, 'teacher');
+    requireCsrf(req, session);
+    const dateKey = assertAttendanceDateKey(req.nextUrl.searchParams.get('dateKey'));
+    let query = supabase.from('attendance_records').delete();
+    if (dateKey) {
+      const { start, end } = attendanceDateRange(dateKey);
+      query = query.gte('timestamp', start).lte('timestamp', end);
+    } else {
+      query = query.not('id', 'is', null);
+    }
+    const { error } = await query;
+    if (error) failFromDatabase(error);
+    return sendEmpty(state);
+  }
+
   if (req.method === 'POST' && pathname === '/api/attendance/self') {
     const session = await requireRole(req, 'student');
     requireCsrf(req, session);
