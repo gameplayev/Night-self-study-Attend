@@ -4,7 +4,6 @@ import {
   Student,
   formatKoreanFullDate,
   getAttendanceDateKey,
-  getDateKeyDaysAgo,
   getDailyPresence,
   getStudentAbsentCount,
   getTodayDateKey,
@@ -85,16 +84,10 @@ export function TeacherView({
   );
   const absenceDateKeys = useMemo(() => {
     const todayKey = getTodayDateKey();
-    const dateKeys = new Set(
-      records
-        .map((record) => getAttendanceDateKey(record.timestamp))
-        .filter((dateKey) => dateKey < todayKey),
-    );
-    const yesterdayKey = getDateKeyDaysAgo(1);
-    if (yesterdayKey < todayKey) {
-      dateKeys.add(yesterdayKey);
-    }
-    return [...dateKeys].sort();
+    const pastRecordDateKeys = records
+      .map((record) => getAttendanceDateKey(record.timestamp))
+      .filter((dateKey) => dateKey < todayKey);
+    return Array.from(new Set(pastRecordDateKeys)).sort();
   }, [records]);
   const absentCountMap = useMemo(
     () =>
