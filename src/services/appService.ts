@@ -113,6 +113,19 @@ export async function getCurrentSession() {
   return (await response.json()) as AuthSession;
 }
 
+export async function keepApiAlive() {
+  const response = await window.fetch('/api/keep-alive', {
+    cache: 'no-store',
+    credentials: 'include',
+  });
+  if (response.ok) return;
+
+  const payload = (await response.json().catch(() => null)) as
+    | { message?: string }
+    | null;
+  throw new Error(payload?.message || '서버 연결 유지 요청에 실패했습니다.');
+}
+
 export async function teacherLogin(identifier: string, displayName: string) {
   return apiRequest<AuthSession>('/api/auth/teacher-login', {
     method: 'POST',
