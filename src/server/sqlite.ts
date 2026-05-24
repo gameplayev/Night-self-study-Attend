@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
@@ -45,8 +45,26 @@ interface Ordering {
 
 let database: SqliteDatabase | null = null;
 
+const DEFAULT_DATABASE_PATH = path.join(process.cwd(), 'data', 'attend.sqlite');
+const VERCEL_RUNTIME_DATABASE_PATH = path.join('/tmp', 'attend.sqlite');
+
+function isVercelRuntime() {
+  return process.env.VERCEL === '1' || Boolean(process.env.VERCEL_ENV);
+}
+
 function databasePath() {
-  return process.env.SQLITE_PATH || path.join(process.cwd(), 'data', 'attend.sqlite');
+  if (process.env.SQLITE_PATH) return process.env.SQLITE_PATH;
+  return isVercelRuntime() ? VERCEL_RUNTIME_DATABASE_PATH : DEFAULT_DATABASE_PATH;
+}
+
+function prepareRuntimeDatabase(filePath: string) {
+  if (process.env.SQLITE_PATH || !isVercelRuntime() || existsSync(filePath)) {
+    return;
+  }
+  if (existsSync(DEFAULT_DATABASE_PATH)) {
+    mkdirSync(path.dirname(filePath), { recursive: true });
+    copyFileSync(DEFAULT_DATABASE_PATH, filePath);
+  }
 }
 
 function assertIdentifier(identifier: string) {
@@ -419,6 +437,7 @@ export function getDatabase() {
   if (database) return database;
 
   const filePath = databasePath();
+  prepareRuntimeDatabase(filePath);
   mkdirSync(path.dirname(filePath), { recursive: true });
   const sqlite = new DatabaseSync(filePath);
   initializeDatabase(sqlite);

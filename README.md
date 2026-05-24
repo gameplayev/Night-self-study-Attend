@@ -64,3 +64,8 @@ npm start
 
 SQLite는 서버 로컬 파일에 저장됩니다. 서버를 옮기거나 재배포할 때는 `SQLITE_PATH`가 가리키는 DB 파일을 함께 백업하고 복원해야 합니다.
 
+## Vercel 배포
+
+`data/attend.sqlite`는 Vercel 함수 번들에 포함되도록 `next.config.mjs`의 `outputFileTracingIncludes`에 등록되어 있습니다. 배포 런타임에서는 이 파일을 `/tmp/attend.sqlite`로 복사해서 엽니다.
+
+주의: Vercel의 `/tmp` 파일은 영구 저장소가 아닙니다. 포함된 SQLite 파일은 배포 시점의 초기 데이터로는 사용할 수 있지만, 배포 후 앱에서 추가/수정한 출석 데이터는 콜드 스타트나 재배포 이후 사라질 수 있습니다. 장기 운영에는 외부 DB를 사용해야 합니다.
