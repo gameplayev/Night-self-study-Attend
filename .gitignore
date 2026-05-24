@@ -12,10 +12,7 @@
 /build
 /.next
 
-# local database
-/data/*.sqlite
-/data/*.sqlite-*
-/data/*.sqlite.*
+
 
 # misc
 .DS_Store
