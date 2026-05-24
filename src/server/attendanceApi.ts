@@ -7,7 +7,7 @@ import {
   sha256Hex,
   verifySecret,
 } from './security';
-import { getDatabase } from './sqlite';
+import { getSupabase } from './supabase';
 import { STUDENT_NUMBER_PATTERN, parseStudentNumber } from '../lib/students';
 
 type UserRole = 'student' | 'teacher';
@@ -195,9 +195,39 @@ function fail(message: string, statusCode = 400): never {
   throw error;
 }
 
+function isPostgrestSchemaCacheError(error: unknown) {
+  return (
+    typeof error === 'object' &&
+    error != null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'PGRST205'
+  );
+}
+
+function isRowLevelSecurityError(error: unknown) {
+  return (
+    typeof error === 'object' &&
+    error != null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === '42501'
+  );
+}
+
 function failFromDatabase(error: unknown, message = '데이터베이스 요청에 실패했습니다.'): never {
   console.error(message, error);
-  fail(`SQLite ${message}`, 500);
+  if (isPostgrestSchemaCacheError(error)) {
+    fail(
+      'Supabase 테이블을 찾지 못했습니다. Supabase SQL editor에서 supabase/schema.sql을 실행한 뒤 다시 시도해 주세요.',
+      500,
+    );
+  }
+  if (isRowLevelSecurityError(error)) {
+    fail(
+      'Supabase RLS에 막혔습니다. .env.local의 SUPABASE_SERVICE_ROLE_KEY에 anon/public key가 아니라 service_role secret key를 넣어 주세요.',
+      500,
+    );
+  }
+  fail(message, 500);
 }
 
 function requestIp(req: NextRequest) {
@@ -318,9 +348,9 @@ async function timestampForManualAttendanceDate(
 ) {
   if (!dateKey || dateKey === koreaDateKey()) return nowIso();
 
-  const database = getDatabase();
+  const supabase = getSupabase();
   const { start, end } = attendanceDateRange(dateKey);
-  const { data: latestRecord, error } = await database
+  const { data: latestRecord, error } = await supabase
     .from('attendance_records')
     .select('timestamp')
     .eq('student_id', studentId)
@@ -356,8 +386,8 @@ async function ensureBootstrapData() {
 }
 
 async function seedInitialData() {
-  const database = getDatabase();
-  const { count, error } = await database
+  const supabase = getSupabase();
+  const { count, error } = await supabase
     .from('users')
     .select('id', { count: 'exact', head: true });
   if (error) failFromDatabase(error);
@@ -367,7 +397,7 @@ async function seedInitialData() {
     const identifier = process.env.BOOTSTRAP_TEACHER_IDENTIFIER;
     const name = process.env.BOOTSTRAP_TEACHER_NAME;
     if (!identifier || !name) return;
-    const { error: teacherError } = await database.from('users').insert({
+    const { error: teacherError } = await supabase.from('users').insert({
       username: 'teacher:bootstrap',
       password_hash: hashSecret(identifier),
       display_name: name,
@@ -377,7 +407,7 @@ async function seedInitialData() {
     return;
   }
 
-  const { error: teacherError } = await database.from('users').insert({
+  const { error: teacherError } = await supabase.from('users').insert({
     username: 'teacher:1',
     password_hash: hashSecret('teacher01'),
     display_name: '담당 교사',
@@ -395,7 +425,7 @@ async function seedInitialData() {
   ] as const;
 
   for (const [studentNumber, name, grade, classNumber, seatNumber] of students) {
-    const { data: student, error: studentError } = await database
+    const { data: student, error: studentError } = await supabase
       .from('students')
       .insert({
         student_number: studentNumber,
@@ -408,7 +438,7 @@ async function seedInitialData() {
       .single<StudentRow>();
     if (studentError) failFromDatabase(studentError);
 
-    const { error: userError } = await database.from('users').insert({
+    const { error: userError } = await supabase.from('users').insert({
       username: studentNumber,
       password_hash: 'unused',
       display_name: name,
@@ -420,8 +450,8 @@ async function seedInitialData() {
 }
 
 async function loadUserRow(userId: number): Promise<AuthUserRow | null> {
-  const database = getDatabase();
-  const { data: user, error } = await database
+  const supabase = getSupabase();
+  const { data: user, error } = await supabase
     .from('users')
     .select('id, username, password_hash, display_name, role, student_id')
     .eq('id', userId)
@@ -439,7 +469,7 @@ async function loadUserRow(userId: number): Promise<AuthUserRow | null> {
     };
   }
 
-  const { data: student, error: studentError } = await database
+  const { data: student, error: studentError } = await supabase
     .from('students')
     .select('student_number')
     .eq('id', user.student_id)
@@ -457,11 +487,11 @@ async function loadUserRow(userId: number): Promise<AuthUserRow | null> {
 }
 
 async function createSession(state: ApiState, user: AuthUserRow) {
-  const database = getDatabase();
+  const supabase = getSupabase();
   const rawToken = randomToken();
   const rawCsrfToken = randomToken();
   const expiresAt = plusSeconds(SESSION_SECONDS);
-  const { error } = await database.from('web_sessions').insert({
+  const { error } = await supabase.from('web_sessions').insert({
     token_hash: sha256Hex(rawToken),
     csrf_token_hash: sha256Hex(rawCsrfToken),
     user_id: user.id,
@@ -490,8 +520,8 @@ async function currentSession(req: NextRequest): Promise<{
   const rawToken = req.cookies.get(SESSION_COOKIE)?.value;
   if (!rawToken) return null;
 
-  const database = getDatabase();
-  const { data: session, error } = await database
+  const supabase = getSupabase();
+  const { data: session, error } = await supabase
     .from('web_sessions')
     .select('token_hash, csrf_token_hash, user_id, expires_at')
     .eq('token_hash', sha256Hex(rawToken))
@@ -500,7 +530,7 @@ async function currentSession(req: NextRequest): Promise<{
   if (!session) return null;
 
   if (new Date(session.expires_at).getTime() <= Date.now()) {
-    const { error: deleteError } = await database
+    const { error: deleteError } = await supabase
       .from('web_sessions')
       .delete()
       .eq('token_hash', session.token_hash);
@@ -510,7 +540,7 @@ async function currentSession(req: NextRequest): Promise<{
 
   const user = await loadUserRow(session.user_id);
   if (!user) {
-    const { error: deleteError } = await database
+    const { error: deleteError } = await supabase
       .from('web_sessions')
       .delete()
       .eq('token_hash', session.token_hash);
@@ -527,9 +557,9 @@ async function currentSession(req: NextRequest): Promise<{
 }
 
 async function refreshCsrfToken(session: { tokenHash: string }) {
-  const database = getDatabase();
+  const supabase = getSupabase();
   const rawCsrfToken = randomToken();
-  const { error } = await database
+  const { error } = await supabase
     .from('web_sessions')
     .update({ csrf_token_hash: sha256Hex(rawCsrfToken) })
     .eq('token_hash', session.tokenHash);
@@ -581,20 +611,20 @@ async function ensureBrowserDevice(
   state: ApiState,
   label: unknown,
 ) {
-  const database = getDatabase();
+  const supabase = getSupabase();
   const rawToken = req.cookies.get(DEVICE_COOKIE)?.value;
   const tokenHash = rawToken ? sha256Hex(rawToken) : null;
   const nextLabel = browserDeviceLabel(req, label);
 
   if (tokenHash) {
-    const { data: existing, error } = await database
+    const { data: existing, error } = await supabase
       .from('browser_devices')
       .select('id, token_hash, label, student_id')
       .eq('token_hash', tokenHash)
       .maybeSingle<BrowserDeviceRow>();
     if (error) failFromDatabase(error);
     if (existing) {
-      const { error: updateError } = await database
+      const { error: updateError } = await supabase
         .from('browser_devices')
         .update({ label: nextLabel, last_seen_at: nowIso() })
         .eq('id', existing.id);
@@ -615,7 +645,7 @@ async function ensureBrowserDevice(
     studentId: null,
   };
   const now = nowIso();
-  const { error } = await database.from('browser_devices').insert({
+  const { error } = await supabase.from('browser_devices').insert({
     id: nextDevice.id,
     token_hash: sha256Hex(nextRawToken),
     label: nextDevice.label,
@@ -634,8 +664,8 @@ async function ensureBrowserDevice(
 }
 
 async function studentAccount(studentNumber: string, name: string) {
-  const database = getDatabase();
-  const { data: student, error: studentError } = await database
+  const supabase = getSupabase();
+  const { data: student, error: studentError } = await supabase
     .from('students')
     .select('id, student_number, name, grade, class_number, seat_number')
     .eq('student_number', studentNumber)
@@ -644,7 +674,7 @@ async function studentAccount(studentNumber: string, name: string) {
   if (studentError) failFromDatabase(studentError);
   if (!student) return null;
 
-  const { data: user, error: userError } = await database
+  const { data: user, error: userError } = await supabase
     .from('users')
     .select('id, username, password_hash, display_name, role, student_id')
     .eq('student_id', student.id)
@@ -665,8 +695,8 @@ async function studentAccount(studentNumber: string, name: string) {
 }
 
 async function studentDeviceCount(studentId: number) {
-  const database = getDatabase();
-  const { count, error } = await database
+  const supabase = getSupabase();
+  const { count, error } = await supabase
     .from('browser_devices')
     .select('id', { count: 'exact', head: true })
     .eq('student_id', studentId);
@@ -687,8 +717,8 @@ function toStudent(row: StudentRow & { device_count: number }) {
 }
 
 async function getStudentWithDeviceCount(studentId: number) {
-  const database = getDatabase();
-  const { data: student, error } = await database
+  const supabase = getSupabase();
+  const { data: student, error } = await supabase
     .from('students')
     .select('id, student_number, name, grade, class_number, seat_number')
     .eq('id', studentId)
@@ -702,8 +732,8 @@ async function getStudentWithDeviceCount(studentId: number) {
 }
 
 async function listStudents() {
-  const database = getDatabase();
-  const { data: students, error } = await database
+  const supabase = getSupabase();
+  const { data: students, error } = await supabase
     .from('students')
     .select('id, student_number, name, grade, class_number, seat_number')
     .order('seat_number', { ascending: true })
@@ -713,7 +743,7 @@ async function listStudents() {
     .returns<StudentRow[]>();
   if (error) failFromDatabase(error);
 
-  const { data: devices, error: deviceError } = await database
+  const { data: devices, error: deviceError } = await supabase
     .from('browser_devices')
     .select('student_id')
     .not('student_id', 'is', null)
@@ -734,12 +764,12 @@ async function listStudents() {
 }
 
 async function attendanceRecords(session: Awaited<ReturnType<typeof requireSession>>) {
-  const database = getDatabase();
+  const supabase = getSupabase();
   let studentId: number | null = null;
 
   if (session.user.role === 'student') {
     if (!session.user.studentNumber) return [];
-    const { data: student, error } = await database
+    const { data: student, error } = await supabase
       .from('students')
       .select('id')
       .eq('student_number', session.user.studentNumber)
@@ -749,7 +779,7 @@ async function attendanceRecords(session: Awaited<ReturnType<typeof requireSessi
     studentId = student.id;
   }
 
-  let query = database
+  let query = supabase
     .from('attendance_records')
     .select('id, student_id, action, timestamp, device_id, device_label')
     .order('timestamp', { ascending: false });
@@ -762,7 +792,7 @@ async function attendanceRecords(session: Awaited<ReturnType<typeof requireSessi
   if (!records?.length) return [];
 
   const studentIds = [...new Set(records.map((record) => record.student_id))];
-  const { data: students, error: studentError } = await database
+  const { data: students, error: studentError } = await supabase
     .from('students')
     .select('id, student_number, name, grade, class_number, seat_number')
     .in('id', studentIds)
@@ -789,8 +819,8 @@ async function attendanceRecords(session: Awaited<ReturnType<typeof requireSessi
 
 async function dailyPresence(studentId: number): Promise<DailyPresence> {
   const today = koreaDateKey();
-  const database = getDatabase();
-  const { data: records, error } = await database
+  const supabase = getSupabase();
+  const { data: records, error } = await supabase
     .from('attendance_records')
     .select('action, timestamp')
     .eq('student_id', studentId)
@@ -862,8 +892,8 @@ async function createAttendanceRecord(
     deviceId,
     deviceLabel,
   };
-  const database = getDatabase();
-  const { error } = await database.from('attendance_records').insert({
+  const supabase = getSupabase();
+  const { error } = await supabase.from('attendance_records').insert({
     id: record.id,
     student_id: student.id,
     action: record.action,
@@ -877,7 +907,7 @@ async function createAttendanceRecord(
 
 async function handleApi(req: NextRequest, state: ApiState) {
   const { pathname } = req.nextUrl;
-  const database = getDatabase();
+  const supabase = getSupabase();
 
   if (req.method === 'POST' && pathname === '/api/device') {
     const body = await readJson(req);
@@ -902,7 +932,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
     const identifier = assertString(body.identifier, '고유 번호를 입력해 주세요.');
     const displayName = assertString(body.displayName, '이름을 입력해 주세요.');
     checkRateLimit(req, 'teacher-login', displayName);
-    const { data: teachers, error } = await database
+    const { data: teachers, error } = await supabase
       .from('users')
       .select('id, username, password_hash, display_name, role, student_id')
       .eq('role', 'teacher')
@@ -917,7 +947,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
       fail('번호 또는 이름이 올바르지 않습니다.', 401);
     }
     if (isLegacySha256Hash(teacher.password_hash)) {
-      const { error: updateError } = await database
+      const { error: updateError } = await supabase
         .from('users')
         .update({ password_hash: hashSecret(identifier) })
         .eq('id', teacher.id);
@@ -940,7 +970,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
   if (req.method === 'POST' && pathname === '/api/auth/logout') {
     const session = await requireSession(req);
     requireCsrf(req, session);
-    const { error } = await database
+    const { error } = await supabase
       .from('web_sessions')
       .delete()
       .eq('token_hash', session.tokenHash);
@@ -1025,7 +1055,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
     if (device.studentId == null && count >= MAX_DEVICES_PER_STUDENT) {
       fail('등록 가능한 기기 수를 모두 사용했습니다.', 409);
     }
-    const { error } = await database
+    const { error } = await supabase
       .from('browser_devices')
       .update({
         student_id: student.student_id,
@@ -1054,7 +1084,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
       '좌석 번호를 올바르게 입력해 주세요.',
     );
     const { grade, classNumber } = parseStudentClassOrFail(studentNumber);
-    const { data: existing, error: existingError } = await database
+    const { data: existing, error: existingError } = await supabase
       .from('students')
       .select('id')
       .eq('student_number', studentNumber)
@@ -1064,7 +1094,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
       fail('이미 등록된 학번입니다.', 409);
     }
 
-    const { data: student, error: studentError } = await database
+    const { data: student, error: studentError } = await supabase
       .from('students')
       .insert({
         student_number: studentNumber,
@@ -1077,7 +1107,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
       .single<StudentRow>();
     if (studentError) failFromDatabase(studentError);
 
-    const { error: userError } = await database.from('users').insert({
+    const { error: userError } = await supabase.from('users').insert({
       username: studentNumber,
       password_hash: 'unused',
       display_name: name,
@@ -1085,7 +1115,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
       student_id: student.id,
     });
     if (userError) {
-      await database.from('students').delete().eq('id', student.id);
+      await supabase.from('students').delete().eq('id', student.id);
       failFromDatabase(userError);
     }
 
@@ -1105,7 +1135,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
       '좌석 번호를 올바르게 입력해 주세요.',
     );
     const { grade, classNumber } = parseStudentClassOrFail(studentNumber);
-    const { data: duplicate, error: duplicateError } = await database
+    const { data: duplicate, error: duplicateError } = await supabase
       .from('students')
       .select('id')
       .eq('student_number', studentNumber)
@@ -1116,7 +1146,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
       fail('이미 등록된 학번입니다.', 409);
     }
 
-    const { data: updatedStudent, error } = await database
+    const { data: updatedStudent, error } = await supabase
       .from('students')
       .update({
         student_number: studentNumber,
@@ -1133,7 +1163,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
       fail('학생을 찾을 수 없습니다.', 404);
     }
 
-    const { error: userError } = await database
+    const { error: userError } = await supabase
       .from('users')
       .update({ username: studentNumber, display_name: name })
       .eq('student_id', studentId);
@@ -1150,7 +1180,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
     const session = await requireRole(req, 'teacher');
     requireCsrf(req, session);
     const studentId = Number(studentMatch[1]);
-    const { data: student, error: studentError } = await database
+    const { data: student, error: studentError } = await supabase
       .from('students')
       .select('id')
       .eq('id', studentId)
@@ -1159,7 +1189,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
     if (!student) {
       fail('학생을 찾을 수 없습니다.', 404);
     }
-    const { error } = await database.from('students').delete().eq('id', studentId);
+    const { error } = await supabase.from('students').delete().eq('id', studentId);
     if (error) failFromDatabase(error);
     return sendEmpty(state);
   }
@@ -1168,7 +1198,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
   if (resetDeviceMatch && req.method === 'POST') {
     const session = await requireRole(req, 'teacher');
     requireCsrf(req, session);
-    const { error } = await database
+    const { error } = await supabase
       .from('browser_devices')
       .update({ student_id: null })
       .eq('student_id', Number(resetDeviceMatch[1]));
@@ -1178,7 +1208,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
 
   if (req.method === 'GET' && pathname === '/api/teachers') {
     await requireRole(req, 'teacher');
-    const { data: teachers, error } = await database
+    const { data: teachers, error } = await supabase
       .from('users')
       .select('id, display_name')
       .eq('role', 'teacher')
@@ -1202,7 +1232,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
     const body = await readJson(req);
     const identifier = assertString(body.identifier, '고유 번호를 입력해 주세요.');
     const name = assertString(body.name, '이름을 입력해 주세요.');
-    const { data: teachers, error } = await database
+    const { data: teachers, error } = await supabase
       .from('users')
       .select('password_hash')
       .eq('role', 'teacher')
@@ -1214,7 +1244,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
     if (duplicateIdentifier) {
       fail('이미 사용 중인 고유 번호입니다.', 409);
     }
-    const { data: teacher, error: insertError } = await database
+    const { data: teacher, error: insertError } = await supabase
       .from('users')
       .insert({
         username: `teacher:${randomUUID()}`,
@@ -1241,7 +1271,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
 
     if (typeof body.newIdentifier === 'string' && body.newIdentifier.trim()) {
       const newIdentifier = body.newIdentifier.trim();
-      const { data: teachers, error } = await database
+      const { data: teachers, error } = await supabase
         .from('users')
         .select('id, password_hash')
         .eq('role', 'teacher')
@@ -1257,14 +1287,14 @@ async function handleApi(req: NextRequest, state: ApiState) {
       updatePayload.password_hash = hashSecret(newIdentifier);
     }
 
-    const { error: updateError } = await database
+    const { error: updateError } = await supabase
       .from('users')
       .update(updatePayload)
       .eq('id', teacherId)
       .eq('role', 'teacher');
     if (updateError) failFromDatabase(updateError);
 
-    const { data: teacher, error } = await database
+    const { data: teacher, error } = await supabase
       .from('users')
       .select('id, display_name')
       .eq('id', teacherId)
@@ -1286,16 +1316,14 @@ async function handleApi(req: NextRequest, state: ApiState) {
     const session = await requireRole(req, 'teacher');
     requireCsrf(req, session);
     const dateKey = assertAttendanceDateKey(req.nextUrl.searchParams.get('dateKey'));
-    let query = database.from('attendance_records').delete();
+    let query = supabase.from('attendance_records').delete();
     if (dateKey) {
       const { start, end } = attendanceDateRange(dateKey);
       query = query.gte('timestamp', start).lte('timestamp', end);
     } else {
       query = query.not('id', 'is', null);
     }
-    const { data: deletedRecords, error } = await query
-      .select('id')
-      .returns<Array<{ id: string }>>();
+    const { data: deletedRecords, error } = await query.select('id');
     if (error) failFromDatabase(error);
     return sendJson(state, 200, {
       deletedCount: deletedRecords?.length ?? 0,
@@ -1308,7 +1336,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
     const body = await readJson(req);
     validateLocation(body.location);
     const device = await ensureBrowserDevice(req, state, body.deviceLabel);
-    const { data: student, error } = await database
+    const { data: student, error } = await supabase
       .from('students')
       .select('id, student_number, name, grade, class_number, seat_number')
       .eq('student_number', session.user.studentNumber)
@@ -1339,7 +1367,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
       fail('처리 유형이 올바르지 않습니다.', 400);
     }
     const dateKey = assertAttendanceDateKey(body.dateKey);
-    const { data: student, error } = await database
+    const { data: student, error } = await supabase
       .from('students')
       .select('id, student_number, name, grade, class_number, seat_number')
       .eq('id', studentId)

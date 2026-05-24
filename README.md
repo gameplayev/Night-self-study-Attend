@@ -7,11 +7,11 @@
 ```text
 Next.js App Router
 ├─ 브라우저 UI
-└─ Route Handler API -> SQLite
+└─ Route Handler API -> Supabase PostgreSQL
 ```
 
-- 브라우저는 데이터베이스에 직접 접근하지 않습니다.
-- 모든 데이터 접근은 Next 서버 라우트에서 로컬 SQLite 파일로 처리합니다.
+- 브라우저는 Supabase에 직접 접근하지 않습니다.
+- 모든 데이터 접근은 Next 서버 라우트에서 `SUPABASE_SERVICE_ROLE_KEY`로 처리합니다.
 - 로그인 세션은 `HttpOnly` 쿠키로 관리합니다.
 - 변경 요청은 CSRF 토큰을 추가로 확인합니다.
 - 교사 고유 번호는 보안 해시로 저장합니다.
@@ -29,43 +29,39 @@ Next.js App Router
 
 ## 개발 실행
 
-Node.js의 내장 SQLite 모듈을 사용하므로 Node.js `22.5.0` 이상에서 실행합니다.
+Supabase 프로젝트에서 SQL editor를 열고 먼저 스키마를 적용합니다.
+
+```sql
+-- supabase/schema.sql 전체 내용을 Supabase SQL editor에서 실행
+```
+
+`Could not find the table 'public.users' in the schema cache` 오류가 보이면 아직 이 SQL이 적용되지 않았거나 Supabase API 캐시가 갱신되지 않은 상태입니다. `supabase/schema.sql`을 끝까지 다시 실행하면 마지막 줄에서 캐시를 갱신합니다.
+
+`.env.local`에 Supabase 서버 환경 변수를 입력한 뒤 실행합니다.
 
 ```bash
-npm install
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+```
+
+`SUPABASE_SERVICE_ROLE_KEY`에는 anon/public key가 아니라 Supabase Dashboard > Project Settings > API의 `service_role` secret key를 넣어야 합니다. anon key를 넣으면 `new row violates row-level security policy` 오류가 납니다.
+
+```bash
 npm run dev
 ```
 
-기본 DB 파일은 `data/attend.sqlite`에 자동 생성됩니다. 다른 위치를 쓰려면 서버 실행 전에 `SQLITE_PATH`를 지정합니다.
-
-```bash
-SQLITE_PATH=/absolute/path/attend.sqlite npm run dev
-```
-
 프론트엔드와 API가 모두 `http://localhost:3000`에서 실행됩니다.
-
-개발 모드에서 DB가 비어 있으면 기본 교사 계정과 샘플 학생이 자동 생성됩니다.
-
-- 선생님 이름: `담당 교사`
-- 선생님 고유 번호: `teacher01`
 
 ## 운영 빌드
 
 ```bash
 npm run build
 NODE_ENV=production \
-SQLITE_PATH=/absolute/path/attend.sqlite \
 BOOTSTRAP_TEACHER_IDENTIFIER='처음 사용할 교사 고유 번호' \
 BOOTSTRAP_TEACHER_NAME='처음 사용할 교사 이름' \
 npm start
 ```
 
-운영 서버는 반드시 HTTPS 뒤에서 배포해야 합니다. 첫 실행 시 위 환경 변수로 최초 교사 계정을 한 번만 만들고, 이후 교사 계정은 관리자 화면에서 추가합니다.
+운영 서버는 반드시 HTTPS 뒤에서 배포해야 합니다. Supabase 서비스 역할 키는 서버 환경 변수로만 보관해야 하며 브라우저에 노출하면 안 됩니다. 첫 실행 시 위 환경 변수로 최초 교사 계정을 한 번만 만들고, 이후 교사 계정은 관리자 화면에서 추가합니다.
 
-SQLite는 서버 로컬 파일에 저장됩니다. 서버를 옮기거나 재배포할 때는 `SQLITE_PATH`가 가리키는 DB 파일을 함께 백업하고 복원해야 합니다.
 
-## Vercel 배포
-
-`data/attend.sqlite`는 Vercel 함수 번들에 포함되도록 `next.config.mjs`의 `outputFileTracingIncludes`에 등록되어 있습니다. 배포 런타임에서는 이 파일을 `/tmp/attend.sqlite`로 복사해서 엽니다.
-
-주의: Vercel의 `/tmp` 파일은 영구 저장소가 아닙니다. 포함된 SQLite 파일은 배포 시점의 초기 데이터로는 사용할 수 있지만, 배포 후 앱에서 추가/수정한 출석 데이터는 콜드 스타트나 재배포 이후 사라질 수 있습니다. 장기 운영에는 외부 DB를 사용해야 합니다.
