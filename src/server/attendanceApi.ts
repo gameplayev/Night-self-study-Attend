@@ -915,14 +915,6 @@ async function handleApi(req: NextRequest, state: ApiState) {
     return sendJson(state, 200, { id: device.id, label: device.label });
   }
 
-  if (req.method === 'GET' && pathname === '/api/keep-alive') {
-    const { error } = await supabase
-      .from('users')
-      .select('id', { count: 'exact', head: true });
-    if (error) failFromDatabase(error);
-    return sendEmpty(state);
-  }
-
   if (req.method === 'GET' && pathname === '/api/session') {
     const session = await currentSession(req);
     if (!session) {

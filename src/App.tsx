@@ -20,7 +20,6 @@ import {
   listStudents,
   listTeachers,
   logout,
-  keepApiAlive,
   registerStudentDevice,
   resetStudentDevices,
   updateStudent,
@@ -46,7 +45,6 @@ import { FeedbackMessage } from './types/ui';
 import { SpeedInsights } from "@vercel/speed-insights/next"
 
 const LOCATION_GUIDE_SEEN_KEY = 'attend.location-guide-seen';
-const KEEP_ALIVE_INTERVAL_MS = 8 * 60 * 1000;
 
 // App은 화면 자체를 많이 그리지 않고, 세션과 공통 상태를 연결하는 루트 컨테이너 역할을 맡는다.
 function App() {
@@ -71,16 +69,6 @@ function App() {
   useEffect(() => {
     // 앱이 시작되면 기기 표시 정보와 서버 세션을 함께 복원한다.
     void bootstrap();
-  }, []);
-
-  useEffect(() => {
-    const keepAliveTimer = window.setInterval(() => {
-      void keepApiAlive().catch((error) => {
-        console.warn('Keep-alive request failed', error);
-      });
-    }, KEEP_ALIVE_INTERVAL_MS);
-
-    return () => window.clearInterval(keepAliveTimer);
   }, []);
 
   useEffect(() => {
