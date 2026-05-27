@@ -380,7 +380,10 @@ function publicUser(row: AuthUserRow) {
 
 async function ensureBootstrapData() {
   if (!bootstrapPromise) {
-    bootstrapPromise = seedInitialData();
+    bootstrapPromise = seedInitialData().catch((error) => {
+      bootstrapPromise = null;
+      throw error;
+    });
   }
   return bootstrapPromise;
 }
