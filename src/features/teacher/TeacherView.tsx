@@ -97,7 +97,10 @@ export function TeacherView({
           getStudentAbsentCount(
             student.studentNumber,
             records,
-            absenceDateKeys,
+            {
+              dateKeys: absenceDateKeys,
+              activeWeekdays: student.attendanceWeekdays,
+            },
           ),
         ]),
       ),
@@ -125,7 +128,7 @@ export function TeacherView({
         <StatCard label="퇴실 완료" value={checkedOutCount} tone="amber" />
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
         <StudentRosterSection
           students={sortedStudents}
           presenceMap={presenceMap}

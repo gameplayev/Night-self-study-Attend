@@ -1,4 +1,5 @@
 import { AttendanceRecord, Student } from '../lib/attendance';
+import type { AttendanceWeekday } from '../lib/attendance';
 import { DeviceIdentity } from './deviceService';
 import { LocationSample } from '../lib/location';
 
@@ -45,6 +46,7 @@ export interface UpdateStudentInput {
   studentNumber: string;
   name: string;
   seatNumber: number;
+  attendanceWeekdays: readonly AttendanceWeekday[];
 }
 
 export interface Teacher {

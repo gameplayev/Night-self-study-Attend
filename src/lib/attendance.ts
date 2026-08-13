@@ -6,9 +6,13 @@ export interface Student {
   classNumber: number;
   seatNumber: number;
   deviceCount: number;
+  attendanceWeekdays: readonly AttendanceWeekday[];
 }
 
 export type AttendanceAction = 'check_in' | 'check_out' | 'absent' | 'present';
+
+export const DEFAULT_ATTENDANCE_WEEKDAYS = [1, 2, 3, 4, 5] as const;
+export type AttendanceWeekday = (typeof DEFAULT_ATTENDANCE_WEEKDAYS)[number];
 
 // 출결 화면과 서비스 계층이 공통으로 사용하는 단일 출결 이벤트 형식이다.
 export interface AttendanceRecord {
@@ -30,8 +34,15 @@ export interface DailyAttendanceSummary {
   status: 'absent' | 'present' | 'checked_out';
 }
 
+interface AbsenceCountOptions {
+  readonly dateKeys?: readonly string[];
+  readonly referenceDate?: Date;
+  readonly activeWeekdays: readonly AttendanceWeekday[];
+}
+
 export type DailyAttendanceResult =
   | 'not_checked_in'
+  | 'not_scheduled'
   | 'present'
   | 'checked_out'
   | 'normal_attendance'
@@ -39,6 +50,29 @@ export type DailyAttendanceResult =
 
 // 출결 기준일은 브라우저의 로컬 시간대가 아니라 학교가 있는 한국 시간으로 고정한다.
 const ATTENDANCE_TIME_ZONE = 'Asia/Seoul';
+
+function isAttendanceWeekday(value: unknown): value is AttendanceWeekday {
+  return value === 1 || value === 2 || value === 3 || value === 4 || value === 5;
+}
+
+export function parseAttendanceWeekdays(value: unknown): AttendanceWeekday[] | null {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const weekdays = new Set<AttendanceWeekday>();
+  for (const weekday of value) {
+    if (!isAttendanceWeekday(weekday)) return null;
+    weekdays.add(weekday);
+  }
+  return [...weekdays].sort((left, right) => left - right);
+}
+
+export function isStudentScheduledOnDate(
+  dateKey: string,
+  activeWeekdays: readonly AttendanceWeekday[],
+) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  return isAttendanceWeekday(weekday) && activeWeekdays.includes(weekday);
+}
 
 // 전체 기록에서 가장 최신 이벤트 하나만 보고 현재 상태를 계산할 때 사용한다.
 export function getCurrentPresence(
@@ -178,23 +212,28 @@ export function getDailyAttendanceResult(
 export function getStudentAbsentCount(
   studentNumber: string,
   records: AttendanceRecord[],
-  dateKeys?: string[],
-  referenceDate = new Date(),
+  {
+    dateKeys,
+    referenceDate = new Date(),
+    activeWeekdays,
+  }: AbsenceCountOptions,
 ) {
   const todayKey = getTodayDateKey(referenceDate);
   const trackedDateKeys = new Set(
     dateKeys ??
       records.map((record) => getAttendanceDateKey(record.timestamp)),
   );
-  return [...trackedDateKeys].filter(
-    (dateKey) =>
+  return [...trackedDateKeys].filter((dateKey) => {
+    return (
+      isStudentScheduledOnDate(dateKey, activeWeekdays) &&
       dateKey < todayKey &&
       getDailyAttendanceResult(
         getDailyAttendanceSummary(studentNumber, records, dateKey),
         dateKey,
         referenceDate,
-      ) === 'absent',
-  ).length;
+      ) === 'absent'
+    );
+  }).length;
 }
 
 // 출석/퇴실 시각을 표에서 읽기 쉬운 한국어 날짜와 시간으로 바꾼다.

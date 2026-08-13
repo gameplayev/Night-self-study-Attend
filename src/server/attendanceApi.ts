@@ -9,6 +9,12 @@ import {
 } from './security';
 import { getSupabase } from './supabase';
 import { STUDENT_NUMBER_PATTERN, parseStudentNumber } from '../lib/students';
+import {
+  DEFAULT_ATTENDANCE_WEEKDAYS,
+  isStudentScheduledOnDate,
+  parseAttendanceWeekdays,
+} from '../lib/attendance';
+import type { AttendanceWeekday } from '../lib/attendance';
 
 type UserRole = 'student' | 'teacher';
 type AttendanceAction = 'check_in' | 'check_out' | 'absent' | 'present';
@@ -58,6 +64,7 @@ interface StudentRow {
   grade: number;
   class_number: number;
   seat_number: number;
+  attendance_weekdays: unknown;
 }
 
 interface StudentAccountRow extends AuthUserRow {
@@ -107,7 +114,6 @@ const DEVICE_COOKIE = IS_PRODUCTION
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 const RATE_LIMIT_MAX_ATTEMPTS = 8;
 const rateLimits = new Map<string, { count: number; resetAt: number }>();
-
 let bootstrapPromise: Promise<void> | null = null;
 
 function nowIso() {
@@ -331,6 +337,14 @@ function assertAttendanceDateKey(value: unknown) {
   return value;
 }
 
+function assertAttendanceWeekdays(value: unknown): AttendanceWeekday[] {
+  const weekdays = parseAttendanceWeekdays(value);
+  if (!weekdays) {
+    fail('출석 요일은 월~금 중에서 하나 이상 선택해 주세요.', 400);
+  }
+  return weekdays;
+}
+
 function attendanceDateRange(dateKey: string) {
   const [year, month, day] = dateKey.split('-').map(Number);
   const start = new Date(
@@ -437,7 +451,7 @@ async function seedInitialData() {
         class_number: classNumber,
         seat_number: seatNumber,
       })
-      .select('id, student_number, name, grade, class_number, seat_number')
+      .select('id, student_number, name, grade, class_number, seat_number, attendance_weekdays')
       .single<StudentRow>();
     if (studentError) failFromDatabase(studentError);
 
@@ -670,7 +684,7 @@ async function studentAccount(studentNumber: string, name: string) {
   const supabase = getSupabase();
   const { data: student, error: studentError } = await supabase
     .from('students')
-    .select('id, student_number, name, grade, class_number, seat_number')
+    .select('id, student_number, name, grade, class_number, seat_number, attendance_weekdays')
     .eq('student_number', studentNumber)
     .eq('name', name)
     .maybeSingle<StudentRow>();
@@ -708,6 +722,10 @@ async function studentDeviceCount(studentId: number) {
 }
 
 function toStudent(row: StudentRow & { device_count: number }) {
+  const attendanceWeekdays = parseAttendanceWeekdays(row.attendance_weekdays);
+  if (!attendanceWeekdays) {
+    fail('저장된 학생 출석 요일이 올바르지 않습니다.', 500);
+  }
   return {
     id: Number(row.id),
     studentNumber: row.student_number,
@@ -716,6 +734,7 @@ function toStudent(row: StudentRow & { device_count: number }) {
     classNumber: Number(row.class_number),
     seatNumber: Number(row.seat_number),
     deviceCount: Number(row.device_count),
+    attendanceWeekdays,
   };
 }
 
@@ -723,7 +742,7 @@ async function getStudentWithDeviceCount(studentId: number) {
   const supabase = getSupabase();
   const { data: student, error } = await supabase
     .from('students')
-    .select('id, student_number, name, grade, class_number, seat_number')
+    .select('id, student_number, name, grade, class_number, seat_number, attendance_weekdays')
     .eq('id', studentId)
     .maybeSingle<StudentRow>();
   if (error) failFromDatabase(error);
@@ -738,7 +757,7 @@ async function listStudents() {
   const supabase = getSupabase();
   const { data: students, error } = await supabase
     .from('students')
-    .select('id, student_number, name, grade, class_number, seat_number')
+    .select('id, student_number, name, grade, class_number, seat_number, attendance_weekdays')
     .order('seat_number', { ascending: true })
     .order('grade', { ascending: true })
     .order('class_number', { ascending: true })
@@ -797,7 +816,7 @@ async function attendanceRecords(session: Awaited<ReturnType<typeof requireSessi
   const studentIds = [...new Set(records.map((record) => record.student_id))];
   const { data: students, error: studentError } = await supabase
     .from('students')
-    .select('id, student_number, name, grade, class_number, seat_number')
+    .select('id, student_number, name, grade, class_number, seat_number, attendance_weekdays')
     .in('id', studentIds)
     .returns<StudentRow[]>();
   if (studentError) failFromDatabase(studentError);
@@ -1086,6 +1105,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
       body.seatNumber,
       '좌석 번호를 올바르게 입력해 주세요.',
     );
+    const attendanceWeekdays = [...DEFAULT_ATTENDANCE_WEEKDAYS];
     const { grade, classNumber } = parseStudentClassOrFail(studentNumber);
     const { data: existing, error: existingError } = await supabase
       .from('students')
@@ -1105,8 +1125,9 @@ async function handleApi(req: NextRequest, state: ApiState) {
         grade,
         class_number: classNumber,
         seat_number: seatNumber,
+        attendance_weekdays: attendanceWeekdays,
       })
-      .select('id, student_number, name, grade, class_number, seat_number')
+      .select('id, student_number, name, grade, class_number, seat_number, attendance_weekdays')
       .single<StudentRow>();
     if (studentError) failFromDatabase(studentError);
 
@@ -1137,6 +1158,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
       body.seatNumber,
       '좌석 번호를 올바르게 입력해 주세요.',
     );
+    const attendanceWeekdays = assertAttendanceWeekdays(body.attendanceWeekdays);
     const { grade, classNumber } = parseStudentClassOrFail(studentNumber);
     const { data: duplicate, error: duplicateError } = await supabase
       .from('students')
@@ -1157,9 +1179,10 @@ async function handleApi(req: NextRequest, state: ApiState) {
         grade,
         class_number: classNumber,
         seat_number: seatNumber,
+        attendance_weekdays: attendanceWeekdays,
       })
       .eq('id', studentId)
-      .select('id, student_number, name, grade, class_number, seat_number')
+      .select('id, student_number, name, grade, class_number, seat_number, attendance_weekdays')
       .maybeSingle<StudentRow>();
     if (error) failFromDatabase(error);
     if (!updatedStudent) {
@@ -1341,7 +1364,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
     const device = await ensureBrowserDevice(req, state, body.deviceLabel);
     const { data: student, error } = await supabase
       .from('students')
-      .select('id, student_number, name, grade, class_number, seat_number')
+      .select('id, student_number, name, grade, class_number, seat_number, attendance_weekdays')
       .eq('student_number', session.user.studentNumber)
       .maybeSingle<StudentRow>();
     if (error) failFromDatabase(error);
@@ -1372,12 +1395,21 @@ async function handleApi(req: NextRequest, state: ApiState) {
     const dateKey = assertAttendanceDateKey(body.dateKey);
     const { data: student, error } = await supabase
       .from('students')
-      .select('id, student_number, name, grade, class_number, seat_number')
+      .select('id, student_number, name, grade, class_number, seat_number, attendance_weekdays')
       .eq('id', studentId)
       .maybeSingle<StudentRow>();
     if (error) failFromDatabase(error);
     if (!student) {
       fail('학생을 찾을 수 없습니다.', 404);
+    }
+    const studentWeekdays = assertAttendanceWeekdays(
+      student.attendance_weekdays,
+    );
+    if (
+      action === 'absent' &&
+      !isStudentScheduledOnDate(dateKey ?? koreaDateKey(), studentWeekdays)
+    ) {
+      fail('해당 학생의 출석 대상 요일이 아닙니다.', 400);
     }
     return sendJson(
       state,

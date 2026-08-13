@@ -6,7 +6,8 @@ create table if not exists public.students (
   name text not null,
   grade integer not null,
   class_number integer not null,
-  seat_number integer not null
+  seat_number integer not null,
+  attendance_weekdays integer[] not null default '{1,2,3,4,5}'
 );
 
 create table if not exists public.users (
@@ -38,6 +39,17 @@ create table if not exists public.attendance_records (
 
 alter table public.students
   add column if not exists seat_number integer;
+
+alter table public.students
+  add column if not exists attendance_weekdays integer[] not null default '{1,2,3,4,5}';
+
+alter table public.students
+  drop constraint if exists students_attendance_weekdays_check;
+
+alter table public.students
+  add constraint students_attendance_weekdays_check
+  check (attendance_weekdays <@ array[1, 2, 3, 4, 5]::integer[]
+         and cardinality(attendance_weekdays) >= 1);
 
 with numbered_students as (
   select

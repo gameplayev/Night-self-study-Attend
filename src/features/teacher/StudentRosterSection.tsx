@@ -1,4 +1,11 @@
-import { Student, DailyPresence } from '../../lib/attendance';
+import {
+  DEFAULT_ATTENDANCE_WEEKDAYS,
+  Student,
+  DailyPresence,
+  getTodayDateKey,
+  isStudentScheduledOnDate,
+} from '../../lib/attendance';
+import type { AttendanceWeekday } from '../../lib/attendance';
 import { UpdateStudentInput } from '../../services/appService';
 import { useState } from 'react';
 import {
@@ -10,7 +17,16 @@ interface EditStudentForm {
   studentNumber: string;
   name: string;
   seatNumber: string;
+  attendanceWeekdays: readonly AttendanceWeekday[];
 }
+
+const WEEKDAY_LABELS: Record<AttendanceWeekday, string> = {
+  1: '월',
+  2: '화',
+  3: '수',
+  4: '목',
+  5: '금',
+};
 
 export function StudentRosterSection({
   students,
@@ -54,11 +70,25 @@ export function StudentRosterSection({
       studentNumber: student.studentNumber,
       name: student.name,
       seatNumber: String(student.seatNumber),
+      attendanceWeekdays: [...student.attendanceWeekdays],
+    });
+  }
+
+  function toggleAttendanceWeekday(
+    weekday: AttendanceWeekday,
+    checked: boolean,
+  ) {
+    setEditStudent((value) => {
+      if (!value) return value;
+      const attendanceWeekdays = checked
+        ? [...value.attendanceWeekdays, weekday].sort((left, right) => left - right)
+        : value.attendanceWeekdays.filter((item) => item !== weekday);
+      return { ...value, attendanceWeekdays };
     });
   }
 
   async function saveStudent(student: Student) {
-    if (!editStudent) return;
+    if (!editStudent || editStudent.attendanceWeekdays.length === 0) return;
     await onUpdateStudent(student, {
       ...editStudent,
       seatNumber: Number(editStudent.seatNumber),
@@ -68,7 +98,7 @@ export function StudentRosterSection({
   }
 
   return (
-    <div className="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="min-w-0 rounded-md border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-slate-500">교사 관리</p>
@@ -85,9 +115,10 @@ export function StudentRosterSection({
       </div>
 
       <div className="mt-5 overflow-x-auto rounded-md border border-slate-200">
-        <table className="min-w-[1320px] divide-y divide-slate-200 text-left text-sm">
+        <table className="min-w-[1480px] divide-y divide-slate-200 text-left text-sm">
           <colgroup>
             <col className="w-24" />
+            <col className="w-40" />
             <col className="w-32" />
             <col className="w-36" />
             <col className="w-40" />
@@ -104,6 +135,7 @@ export function StudentRosterSection({
               <th className="whitespace-nowrap px-5 py-3 font-medium">학급</th>
               <th className="whitespace-nowrap px-5 py-3 font-medium">기기</th>
               <th className="whitespace-nowrap px-5 py-3 font-medium">결석</th>
+              <th className="whitespace-nowrap px-5 py-3 font-medium">출석 요일</th>
               <th className="whitespace-nowrap px-5 py-3 font-medium">상태</th>
               <th className="whitespace-nowrap px-5 py-3 font-medium">관리</th>
             </tr>
@@ -116,6 +148,10 @@ export function StudentRosterSection({
               const parsedClassLabel = isEditing
                 ? formatParsedStudentClass(editStudent.studentNumber)
                 : null;
+              const canMarkAbsentToday = isStudentScheduledOnDate(
+                getTodayDateKey(),
+                student.attendanceWeekdays,
+              );
               return (
                 <tr key={student.id}>
                   <td className="whitespace-nowrap px-5 py-3 text-slate-600">
@@ -197,6 +233,42 @@ export function StudentRosterSection({
                   <td className="whitespace-nowrap px-5 py-3 text-slate-600">
                     {absentCountMap.get(student.studentNumber) ?? 0}회
                   </td>
+                  <td className="whitespace-nowrap px-5 py-3 text-slate-600">
+                    {isEditing ? (
+                      <div>
+                        <fieldset className="flex gap-2" aria-label="출석 요일">
+                          {DEFAULT_ATTENDANCE_WEEKDAYS.map((weekday) => (
+                            <label
+                              key={weekday}
+                              className="flex items-center gap-1 text-xs font-medium text-slate-700"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={editStudent.attendanceWeekdays.includes(weekday)}
+                                onChange={(event) =>
+                                  toggleAttendanceWeekday(
+                                    weekday,
+                                    event.target.checked,
+                                  )
+                                }
+                                className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-200"
+                              />
+                              <span>{WEEKDAY_LABELS[weekday]}</span>
+                            </label>
+                          ))}
+                        </fieldset>
+                        {editStudent.attendanceWeekdays.length === 0 && (
+                          <p className="mt-1 text-xs font-medium text-rose-700" role="alert">
+                            출석 요일을 하나 이상 선택해 주세요.
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      student.attendanceWeekdays
+                        .map((weekday) => WEEKDAY_LABELS[weekday])
+                        .join('·')
+                    )}
+                  </td>
                   <td className="whitespace-nowrap px-5 py-3">
                     <span
                       className={`rounded px-2 py-1 text-xs font-semibold ${
@@ -221,7 +293,8 @@ export function StudentRosterSection({
                           <button
                             type="button"
                             onClick={() => void saveStudent(student)}
-                            className="h-8 rounded-md border border-sky-300 px-3 text-xs font-medium text-sky-700 transition hover:bg-sky-50"
+                            disabled={editStudent.attendanceWeekdays.length === 0}
+                            className="h-8 rounded-md border border-sky-300 px-3 text-xs font-medium text-sky-700 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             저장
                           </button>
@@ -259,13 +332,15 @@ export function StudentRosterSection({
                       >
                         퇴실
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => void onManualAttendance(student, 'absent')}
-                        className="h-8 rounded-md border border-slate-300 px-3 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
-                      >
-                        미출석
-                      </button>
+                      {canMarkAbsentToday && (
+                        <button
+                          type="button"
+                          onClick={() => void onManualAttendance(student, 'absent')}
+                          className="h-8 rounded-md border border-slate-300 px-3 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                        >
+                          미출석
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => void onResetDevices(student)}

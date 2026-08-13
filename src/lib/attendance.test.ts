@@ -1,11 +1,14 @@
 import {
   AttendanceRecord,
+  DEFAULT_ATTENDANCE_WEEKDAYS,
   getDailyAttendanceSummary,
   getCurrentPresence,
   getDailyPresence,
   getDailyAttendanceResult,
   formatKoreanFullDate,
+  isStudentScheduledOnDate,
   getStudentAbsentCount,
+  parseAttendanceWeekdays,
 } from './attendance';
 
 const records: AttendanceRecord[] = [
@@ -223,19 +226,70 @@ test('counts one absence per date using the final daily status', () => {
     getStudentAbsentCount(
       '20101',
       correctedRecords,
-      ['2026-05-17', '2026-05-18'],
-      new Date('2026-05-19T14:00:00.000Z'),
+      {
+        dateKeys: ['2026-05-17', '2026-05-18'],
+        referenceDate: new Date('2026-05-19T14:00:00.000Z'),
+        activeWeekdays: DEFAULT_ATTENDANCE_WEEKDAYS,
+      },
     ),
   ).toBe(1);
   expect(
     getStudentAbsentCount(
       '20102',
       correctedRecords,
-      ['2026-05-17', '2026-05-18'],
-      new Date('2026-05-19T14:00:00.000Z'),
+      {
+        dateKeys: ['2026-05-17', '2026-05-18'],
+        referenceDate: new Date('2026-05-19T14:00:00.000Z'),
+        activeWeekdays: DEFAULT_ATTENDANCE_WEEKDAYS,
+      },
     ),
-  ).toBe(2);
+  ).toBe(1);
 });
+
+test('ignores weekends and inactive weekdays when counting absences', () => {
+  expect(
+    getStudentAbsentCount(
+      '20102',
+      [],
+      {
+        dateKeys: ['2026-05-16', '2026-05-17', '2026-05-18', '2026-05-19'],
+        referenceDate: new Date('2026-05-20T14:00:00.000Z'),
+        activeWeekdays: [1],
+      },
+    ),
+  ).toBe(1);
+});
+
+test('recognizes only a student scheduled weekday as attendance eligible', () => {
+  expect(isStudentScheduledOnDate('2026-08-03', [1])).toBe(true);
+  expect(isStudentScheduledOnDate('2026-08-04', [1])).toBe(false);
+});
+
+test('never treats Saturday or Sunday as attendance eligible', () => {
+  expect(
+    isStudentScheduledOnDate('2026-08-08', DEFAULT_ATTENDANCE_WEEKDAYS),
+  ).toBe(false);
+  expect(
+    isStudentScheduledOnDate('2026-08-09', DEFAULT_ATTENDANCE_WEEKDAYS),
+  ).toBe(false);
+});
+
+test('parses attendance weekdays as a sorted unique selection', () => {
+  expect(parseAttendanceWeekdays([5, 1, 1])).toEqual([1, 5]);
+});
+
+test.each([
+  { value: [] },
+  { value: [0] },
+  { value: [6] },
+  { value: [1.5] },
+  { value: ['1'] },
+])(
+  'rejects invalid attendance weekday selection %p',
+  ({ value }) => {
+    expect(parseAttendanceWeekdays(value)).toBeNull();
+  },
+);
 
 test('formats a Korean full date without duplicated day suffix', () => {
   expect(formatKoreanFullDate(new Date('2026-05-17T00:00:00.000Z'))).toBe(

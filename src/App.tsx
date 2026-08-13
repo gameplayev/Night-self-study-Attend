@@ -1,7 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { AttendanceRecord, Student, getAttendanceDateKey } from './lib/attendance';
+import {
+  AttendanceRecord,
+  Student,
+  getAttendanceDateKey,
+} from './lib/attendance';
 import {
   AuthSession,
   CreateTeacherInput,

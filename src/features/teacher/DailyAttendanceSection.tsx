@@ -8,6 +8,7 @@ import {
   getDateKeyDaysAgo,
   getDailyAttendanceResult,
   getDailyAttendanceSummary,
+  isStudentScheduledOnDate,
 } from '../../lib/attendance';
 import type { DailyAttendanceResult } from '../../lib/attendance';
 
@@ -25,6 +26,7 @@ function statusLabel(status: DailyAttendanceResult) {
   if (status === 'present') return '출석중';
   if (status === 'normal_attendance') return '정상 출석';
   if (status === 'absent') return '결석';
+  if (status === 'not_scheduled') return '비대상';
   return '미출석';
 }
 
@@ -93,10 +95,17 @@ export function DailyAttendanceSection({
             records,
             activeDateKey,
           );
+          const isScheduled = isStudentScheduledOnDate(
+            activeDateKey,
+            student.attendanceWeekdays,
+          );
           return {
             student,
             summary,
-            status: getDailyAttendanceResult(summary, activeDateKey),
+            isScheduled,
+            status: isScheduled
+              ? getDailyAttendanceResult(summary, activeDateKey)
+              : 'not_scheduled' as const,
           };
         }),
     [activeDateKey, activeDateStudentNumbers, records, students],
@@ -119,8 +128,8 @@ export function DailyAttendanceSection({
   }, [selectableDateKeys, selectedDateKey]);
 
   return (
-    <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-      <div className="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <div className="min-w-0 rounded-md border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <p className="text-sm font-medium text-slate-500">출석 기록</p>
@@ -172,7 +181,7 @@ export function DailyAttendanceSection({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white">
-              {filteredDateRows.map(({ student, summary, status }) => (
+              {filteredDateRows.map(({ student, summary, status, isScheduled }) => (
                 <tr key={student.id}>
                   <td className="whitespace-nowrap px-5 py-3">
                     <p className="font-medium text-slate-900">{student.name}</p>
@@ -206,7 +215,8 @@ export function DailyAttendanceSection({
                       : '-'}
                   </td>
                   <td className="px-5 py-3">
-                    <div className="flex flex-wrap gap-2">
+                    {isScheduled ? (
+                      <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
                         onClick={() =>
@@ -229,7 +239,10 @@ export function DailyAttendanceSection({
                       >
                         결석 처리
                       </button>
-                    </div>
+                      </div>
+                    ) : (
+                      <span className="text-slate-400">-</span>
+                    )}
                   </td>
                 </tr>
               ))}
