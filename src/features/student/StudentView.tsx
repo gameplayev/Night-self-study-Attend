@@ -4,7 +4,6 @@ import {
 } from '../../lib/attendance';
 import { AuthSession } from '../../services/appService';
 import { DeviceIdentity } from '../../services/deviceService';
-import { RecentRecords } from '../attendance/RecentRecords';
 import { FeedbackMessage } from '../../types/ui';
 
 export function StudentView({
@@ -30,7 +29,7 @@ export function StudentView({
   const isCompleted = currentPresence === 'checked_out';
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+    <div>
       <section className="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
         <p className="text-sm font-medium text-slate-500">학생 처리</p>
         <h2 className="mt-1 text-xl font-semibold text-slate-900">
@@ -79,7 +78,6 @@ export function StudentView({
           </p>
         )}
       </section>
-      <RecentRecords records={records} />
     </div>
   );
 }
