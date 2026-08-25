@@ -42,7 +42,7 @@
 4. 기존 `POST /api/attendance/manual`에 `studentId`, `action`, `dateKey`를 전송한다.
 5. 성공 이벤트를 현재 기록 배열 앞에 추가하면 기존 계산 함수가 합계를 즉시 다시 계산한다.
 
-새 DB 컬럼, 새 API, 새 상태 저장소는 추가하지 않는다. 기존 교사 인증, CSRF, 날짜 검증, 출석 요일 검증을 그대로 재사용한다.
+결석 숫자나 수동 보정값을 저장하는 컬럼, 새 API, 새 상태 저장소는 추가하지 않는다. 다만 같은 날짜의 정정 이벤트가 동일한 유효 시각을 가져도 마지막 기록이 항상 이기도록 `attendance_records.recorded_sequence` identity 메타데이터를 추가한다. 모든 최신 상태 판정은 유효 `timestamp` 다음 `recorded_sequence` 순으로 정렬하며, 기존 Supabase 프로젝트에는 새 서버보다 먼저 최신 `supabase/schema.sql`을 적용한다. 기존 교사 인증, CSRF, 날짜 검증, 출석 요일 검증은 그대로 재사용한다.
 
 ## 프로젝트 구조
 
