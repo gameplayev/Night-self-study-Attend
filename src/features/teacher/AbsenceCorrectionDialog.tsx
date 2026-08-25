@@ -85,7 +85,7 @@ export function AbsenceCorrectionDialog({
               {student.name} 결석 기록 수정
             </h2>
             <p className="mt-1 text-sm text-slate-600">
-              날짜별 출결 상태를 정정합니다.
+              날짜별 출결 상태를 수정합니다.
             </p>
           </div>
           <button
@@ -137,7 +137,7 @@ export function AbsenceCorrectionDialog({
           })}
           {scheduledDateKeys.length === 0 && (
             <p className="rounded-md border border-slate-200 px-4 py-6 text-center text-sm text-slate-500">
-              정정할 과거 출결 날짜가 없습니다.
+              수정할 과거 출결 날짜가 없습니다.
             </p>
           )}
         </div>
