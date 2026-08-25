@@ -190,6 +190,38 @@ test('uses a manual present correction without changing recorded times', () => {
   });
 });
 
+test('uses the higher recorded sequence when opposing corrections share an effective timestamp', () => {
+  const earlierCorrection: AttendanceRecord = {
+    id: 'earlier-correction',
+    studentNumber: '20101',
+    studentName: '김민준',
+    action: 'present',
+    timestamp: '2026-05-17T14:59:59.999Z',
+    recordedSequence: 10,
+    deviceId: 'teacher-manual',
+    deviceLabel: '교사 수동 처리',
+  };
+  const laterCorrection: AttendanceRecord = {
+    ...earlierCorrection,
+    id: 'later-correction',
+    action: 'absent',
+    recordedSequence: 11,
+  };
+
+  for (const corrections of [
+    [earlierCorrection, laterCorrection],
+    [laterCorrection, earlierCorrection],
+  ]) {
+    expect(
+      getDailyAttendanceSummary(
+        '20101',
+        [...corrections, ...records],
+        '2026-05-17',
+      ).status,
+    ).toBe('absent');
+  }
+});
+
 test('counts one absence per date using the final daily status', () => {
   const correctedRecords: AttendanceRecord[] = [
     {

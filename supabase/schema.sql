@@ -33,6 +33,7 @@ create table if not exists public.attendance_records (
   student_id bigint not null references public.students(id) on delete cascade,
   action text not null check (action in ('check_in', 'check_out', 'absent', 'present')),
   "timestamp" timestamptz not null,
+  recorded_sequence bigint generated always as identity,
   device_id text not null,
   device_label text not null
 );
@@ -75,6 +76,9 @@ alter table public.attendance_records
   add constraint attendance_records_action_check
   check (action in ('check_in', 'check_out', 'absent', 'present'));
 
+alter table public.attendance_records
+  add column if not exists recorded_sequence bigint generated always as identity;
+
 create table if not exists public.web_sessions (
   token_hash text primary key,
   csrf_token_hash text not null,
@@ -85,8 +89,10 @@ create table if not exists public.web_sessions (
 create index if not exists idx_devices_student
   on public.browser_devices(student_id);
 
-create index if not exists idx_attendance_student_time
-  on public.attendance_records(student_id, "timestamp" desc);
+drop index if exists public.idx_attendance_student_time;
+
+create index idx_attendance_student_time
+  on public.attendance_records(student_id, "timestamp" desc, recorded_sequence desc);
 
 create index if not exists idx_students_seat_number
   on public.students(seat_number, student_number);

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { AttendanceRecord, Student } from '../../lib/attendance';
 import type { Teacher } from '../../services/appService';
 import { TeacherView } from './TeacherView';
@@ -173,4 +173,53 @@ test('teacher sees scheduled dates newest first, corrects absence, and closes wi
   expect(
     screen.queryByRole('dialog', { name: '홍길동 결석 기록 수정' }),
   ).not.toBeInTheDocument();
+});
+
+test('teacher correction buttons stay locked until the pending correction settles', async () => {
+  let finishFirstCorrection: (() => void) | undefined;
+  const onManualAttendance = jest.fn().mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        finishFirstCorrection = resolve;
+      }),
+  );
+
+  render(
+    <TeacherView
+      teachers={teachers}
+      students={students}
+      records={records}
+      onAddTeacher={jest.fn()}
+      onAddStudent={jest.fn()}
+      onDeleteStudent={jest.fn()}
+      onManualAttendance={onManualAttendance}
+      onDeleteAttendanceDate={jest.fn()}
+      onDeleteAllAttendanceRecords={jest.fn()}
+      onResetDevices={jest.fn()}
+      onUpdateStudent={jest.fn()}
+      onUpdateTeacher={jest.fn()}
+      message={null}
+    />,
+  );
+
+  fireEvent.click(
+    screen.getByRole('button', { name: '홍길동 결석 기록 수정' }),
+  );
+  const presentButton = screen.getByRole('button', {
+    name: '2026-08-03 정상출석으로 수정',
+  });
+  const absentButton = screen.getByRole('button', {
+    name: '2026-08-03 결석으로 수정',
+  });
+
+  fireEvent.click(presentButton);
+  expect(presentButton).toBeDisabled();
+  expect(absentButton).toBeDisabled();
+  fireEvent.click(absentButton);
+  expect(onManualAttendance).toHaveBeenCalledTimes(1);
+
+  finishFirstCorrection?.();
+  await waitFor(() => expect(absentButton).toBeEnabled());
+  fireEvent.click(absentButton);
+  expect(onManualAttendance).toHaveBeenCalledTimes(2);
 });

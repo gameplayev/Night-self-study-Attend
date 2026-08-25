@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { SyntheticEvent } from 'react';
 import {
   getDailyAttendanceResult,
@@ -35,6 +35,8 @@ export function AbsenceCorrectionDialog({
   onClose,
 }: AbsenceCorrectionDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const submittingRef = useRef(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const scheduledDateKeys = [...dateKeys]
     .filter((dateKey) =>
       isStudentScheduledOnDate(dateKey, student.attendanceWeekdays),
@@ -55,6 +57,18 @@ export function AbsenceCorrectionDialog({
   function handleCancel(event: SyntheticEvent<HTMLDialogElement>) {
     event.preventDefault();
     handleClose();
+  }
+
+  async function handleCorrection(action: 'present' | 'absent', dateKey: string) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setIsSubmitting(true);
+    try {
+      await onCorrect(student, action, dateKey);
+    } finally {
+      submittingRef.current = false;
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -101,7 +115,8 @@ export function AbsenceCorrectionDialog({
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => void onCorrect(student, 'present', dateKey)}
+                    onClick={() => void handleCorrection('present', dateKey)}
+                    disabled={isSubmitting}
                     className="h-10 rounded-md border border-emerald-300 px-3 text-sm font-medium text-emerald-700 transition hover:bg-emerald-50"
                     aria-label={`${dateKey} 정상출석으로 수정`}
                   >
@@ -109,7 +124,8 @@ export function AbsenceCorrectionDialog({
                   </button>
                   <button
                     type="button"
-                    onClick={() => void onCorrect(student, 'absent', dateKey)}
+                    onClick={() => void handleCorrection('absent', dateKey)}
+                    disabled={isSubmitting}
                     className="h-10 rounded-md border border-rose-300 px-3 text-sm font-medium text-rose-700 transition hover:bg-rose-50"
                     aria-label={`${dateKey} 결석으로 수정`}
                   >

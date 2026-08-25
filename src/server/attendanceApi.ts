@@ -91,6 +91,7 @@ interface AttendanceRecordRow {
   student_id: number;
   action: AttendanceAction;
   timestamp: string;
+  recorded_sequence: number;
   device_id: string;
   device_label: string;
 }
@@ -356,30 +357,9 @@ function attendanceDateRange(dateKey: string) {
   return { start, end };
 }
 
-async function timestampForManualAttendanceDate(
-  studentId: number,
-  dateKey: string | null,
-) {
+function timestampForManualAttendanceDate(dateKey: string | null) {
   if (!dateKey || dateKey === koreaDateKey()) return nowIso();
-
-  const supabase = getSupabase();
-  const { start, end } = attendanceDateRange(dateKey);
-  const { data: latestRecord, error } = await supabase
-    .from('attendance_records')
-    .select('timestamp')
-    .eq('student_id', studentId)
-    .gte('timestamp', start)
-    .lte('timestamp', end)
-    .order('timestamp', { ascending: false })
-    .limit(1)
-    .maybeSingle<{ timestamp: string }>();
-  if (error) failFromDatabase(error);
-  if (!latestRecord) return end;
-
-  const nextTimestamp = new Date(
-    new Date(latestRecord.timestamp).getTime() + 1,
-  ).toISOString();
-  return nextTimestamp <= end ? nextTimestamp : end;
+  return attendanceDateRange(dateKey).end;
 }
 
 function publicUser(row: AuthUserRow) {
@@ -803,8 +783,9 @@ async function attendanceRecords(session: Awaited<ReturnType<typeof requireSessi
 
   let query = supabase
     .from('attendance_records')
-    .select('id, student_id, action, timestamp, device_id, device_label')
-    .order('timestamp', { ascending: false });
+    .select('id, student_id, action, timestamp, recorded_sequence, device_id, device_label')
+    .order('timestamp', { ascending: false })
+    .order('recorded_sequence', { ascending: false });
   if (studentId != null) {
     query = query.eq('student_id', studentId);
   }
@@ -832,6 +813,7 @@ async function attendanceRecords(session: Awaited<ReturnType<typeof requireSessi
         studentName: student.name,
         action: row.action,
         timestamp: row.timestamp,
+        recordedSequence: Number(row.recorded_sequence),
         deviceId: row.device_id,
         deviceLabel: row.device_label,
       },
@@ -844,10 +826,15 @@ async function dailyPresence(studentId: number): Promise<DailyPresence> {
   const supabase = getSupabase();
   const { data: records, error } = await supabase
     .from('attendance_records')
-    .select('action, timestamp')
+    .select('action, timestamp, recorded_sequence')
     .eq('student_id', studentId)
     .order('timestamp', { ascending: false })
-    .returns<Array<{ action: AttendanceAction; timestamp: string }>>();
+    .order('recorded_sequence', { ascending: false })
+    .returns<Array<{
+      action: AttendanceAction;
+      timestamp: string;
+      recorded_sequence: number;
+    }>>();
   if (error) failFromDatabase(error);
 
   const latestRecord = (records ?? []).find(
@@ -915,16 +902,20 @@ async function createAttendanceRecord(
     deviceLabel,
   };
   const supabase = getSupabase();
-  const { error } = await supabase.from('attendance_records').insert({
-    id: record.id,
-    student_id: student.id,
-    action: record.action,
-    timestamp: record.timestamp,
-    device_id: record.deviceId,
-    device_label: record.deviceLabel,
-  });
+  const { data: inserted, error } = await supabase
+    .from('attendance_records')
+    .insert({
+      id: record.id,
+      student_id: student.id,
+      action: record.action,
+      timestamp: record.timestamp,
+      device_id: record.deviceId,
+      device_label: record.deviceLabel,
+    })
+    .select('recorded_sequence')
+    .single<{ recorded_sequence: number }>();
   if (error) failFromDatabase(error);
-  return record;
+  return { ...record, recordedSequence: Number(inserted.recorded_sequence) };
 }
 
 async function handleApi(req: NextRequest, state: ApiState) {
@@ -1419,7 +1410,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
         action as AttendanceAction,
         'teacher-manual',
         `교사 수동 처리 · ${session.user.displayName}`,
-        await timestampForManualAttendanceDate(studentId, dateKey),
+        timestampForManualAttendanceDate(dateKey),
       ),
     );
   }

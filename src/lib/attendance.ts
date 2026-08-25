@@ -21,6 +21,7 @@ export interface AttendanceRecord {
   studentName: string;
   action: AttendanceAction;
   timestamp: string;
+  recordedSequence?: number;
   deviceId: string;
   deviceLabel: string;
 }
@@ -47,6 +48,16 @@ export type DailyAttendanceResult =
   | 'checked_out'
   | 'normal_attendance'
   | 'absent';
+
+function compareNewestAttendanceRecord(
+  left: AttendanceRecord,
+  right: AttendanceRecord,
+) {
+  return (
+    right.timestamp.localeCompare(left.timestamp) ||
+    (right.recordedSequence ?? 0) - (left.recordedSequence ?? 0)
+  );
+}
 
 // 출결 기준일은 브라우저의 로컬 시간대가 아니라 학교가 있는 한국 시간으로 고정한다.
 const ATTENDANCE_TIME_ZONE = 'Asia/Seoul';
@@ -79,9 +90,9 @@ export function getCurrentPresence(
   studentNumber: string,
   records: AttendanceRecord[],
 ) {
-  const latestRecord = records.find(
-    (record) => record.studentNumber === studentNumber,
-  );
+  const latestRecord = records
+    .filter((record) => record.studentNumber === studentNumber)
+    .sort(compareNewestAttendanceRecord)[0];
 
   if (!latestRecord || latestRecord.action === 'absent') return null;
   return latestRecord.action === 'check_out' ? 'checked_out' : 'present';
@@ -148,9 +159,7 @@ export function getDailyPresence(
       record.studentNumber === studentNumber &&
       getAttendanceDateKey(record.timestamp) === todayKey,
   );
-  const latestRecord = [...todayRecords].sort((left, right) =>
-    right.timestamp.localeCompare(left.timestamp),
-  )[0];
+  const latestRecord = [...todayRecords].sort(compareNewestAttendanceRecord)[0];
   if (!latestRecord || latestRecord.action === 'absent') return null;
   return latestRecord.action === 'check_out' ? 'checked_out' : 'present';
 }
@@ -167,9 +176,7 @@ export function getDailyAttendanceSummary(
       record.studentNumber === studentNumber &&
       getAttendanceDateKey(record.timestamp) === dateKey,
   );
-  const latestRecord = [...dailyRecords].sort((left, right) =>
-    right.timestamp.localeCompare(left.timestamp),
-  )[0];
+  const latestRecord = [...dailyRecords].sort(compareNewestAttendanceRecord)[0];
   const checkInAt =
     dailyRecords
       .filter((record) => record.action === 'check_in')

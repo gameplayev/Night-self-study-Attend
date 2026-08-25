@@ -12,6 +12,8 @@
 
 `SUPABASE_SERVICE_ROLE_KEY`는 anon/public/publishable key가 아닌 Supabase secret/service-role key여야 한다. `NEXT_PUBLIC_*`로 만들거나 브라우저 코드에 넣지 않는다. 세션은 `HttpOnly` 쿠키로 유지하고 변경 요청은 CSRF 검사를 통과해야 하므로, 모바일에서도 Supabase에 직접 연결하지 않는다.
 
+기존 Supabase 프로젝트도 새 서버 코드를 배포하기 전에 SQL editor에서 최신 `supabase/schema.sql`을 다시 실행해야 한다. 이 단계가 `attendance_records.recorded_sequence`와 정렬 인덱스를 먼저 추가하므로, 적용 전에는 새 서버 버전을 배포하지 않는다.
+
 ## Vercel 배포
 
 1. Vercel에서 프로젝트를 연결하고 배포 브랜치를 선택한다.
