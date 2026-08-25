@@ -1397,7 +1397,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
       student.attendance_weekdays,
     );
     if (
-      action === 'absent' &&
+      (dateKey != null || action === 'absent') &&
       !isStudentScheduledOnDate(dateKey ?? koreaDateKey(), studentWeekdays)
     ) {
       fail('해당 학생의 출석 대상 요일이 아닙니다.', 400);
