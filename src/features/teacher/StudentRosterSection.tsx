@@ -14,6 +14,7 @@ export function StudentRosterSection({
   onDeleteStudent,
   absentCountMap,
   onManualAttendance,
+  onCorrectAbsences,
   onResetDevices,
   onUpdateStudent,
 }: {
@@ -27,6 +28,7 @@ export function StudentRosterSection({
     student: Student,
     action: 'check_in' | 'check_out' | 'absent',
   ) => Promise<void>;
+  onCorrectAbsences: (student: Student) => void;
   onResetDevices: (student: Student) => Promise<void>;
   onUpdateStudent: (
     student: Student,
@@ -109,6 +111,7 @@ export function StudentRosterSection({
                 student={student}
                 status={presenceMap.get(student.studentNumber) ?? null}
                 absentCount={absentCountMap.get(student.studentNumber) ?? 0}
+                onCorrectAbsences={onCorrectAbsences}
                 editStudent={
                   editingStudentId === student.id ? editStudent : null
                 }

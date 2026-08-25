@@ -19,6 +19,7 @@ import {
 import { StatCard } from '../../components/StatCard';
 import { FeedbackMessage } from '../../types/ui';
 import { DailyAttendanceSection } from './DailyAttendanceSection';
+import { AbsenceCorrectionDialog } from './AbsenceCorrectionDialog';
 import { StudentRosterSection } from './StudentRosterSection';
 import { TeacherManagementPanels } from './TeacherManagementPanels';
 
@@ -62,6 +63,9 @@ export function TeacherView({
   message: FeedbackMessage | null;
 }) {
   const [query, setQuery] = useState('');
+  const [correctionStudent, setCorrectionStudent] = useState<Student | null>(
+    null,
+  );
   const sortedStudents = useMemo(
     () =>
       [...students].sort(
@@ -137,6 +141,7 @@ export function TeacherView({
           onQueryChange={setQuery}
           onDeleteStudent={onDeleteStudent}
           onManualAttendance={onManualAttendance}
+          onCorrectAbsences={setCorrectionStudent}
           onResetDevices={onResetDevices}
           onUpdateStudent={onUpdateStudent}
         />
@@ -155,6 +160,16 @@ export function TeacherView({
         onDeleteAttendanceDate={onDeleteAttendanceDate}
         onDeleteAllAttendanceRecords={onDeleteAllAttendanceRecords}
       />
+
+      {correctionStudent && (
+        <AbsenceCorrectionDialog
+          student={correctionStudent}
+          records={records}
+          dateKeys={absenceDateKeys}
+          onCorrect={onManualAttendance}
+          onClose={() => setCorrectionStudent(null)}
+        />
+      )}
 
       {message && (
         <p

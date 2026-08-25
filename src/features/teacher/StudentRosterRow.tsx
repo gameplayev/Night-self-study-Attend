@@ -34,6 +34,7 @@ export type StudentRosterRowProps = {
   readonly student: Student;
   readonly status: DailyPresence;
   readonly absentCount: number;
+  readonly onCorrectAbsences: (student: Student) => void;
   readonly editStudent: StudentRosterEditForm | null;
   readonly onStartEditing: (student: Student) => void;
   readonly onEditStudentChange: (editStudent: StudentRosterEditForm) => void;
@@ -54,6 +55,7 @@ export function StudentRosterRow({
   student,
   status,
   absentCount,
+  onCorrectAbsences,
   editStudent,
   onStartEditing,
   onEditStudentChange,
@@ -156,7 +158,14 @@ export function StudentRosterRow({
         {student.deviceCount}/2
       </td>
       <td className="whitespace-nowrap px-5 py-3 text-slate-600">
-        {absentCount}회
+        <button
+          type="button"
+          onClick={() => onCorrectAbsences(student)}
+          className="h-10 rounded-md border border-rose-300 px-3 text-sm font-medium text-rose-700 transition hover:bg-rose-50"
+          aria-label={`${student.name} 결석 기록 수정`}
+        >
+          {absentCount}회
+        </button>
       </td>
       <td className="whitespace-nowrap px-5 py-3 text-slate-600">
         {isEditing ? (
