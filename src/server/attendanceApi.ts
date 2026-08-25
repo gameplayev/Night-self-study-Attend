@@ -1429,6 +1429,12 @@ async function handleApi(req: NextRequest, state: ApiState) {
 
 export async function handleApiRoute(req: NextRequest) {
   const state: ApiState = { cookies: [] };
+  if (req.method === 'GET' && req.nextUrl.pathname === '/api/health') {
+    return NextResponse.json(
+      { status: 'ok' },
+      { status: 200, headers: { ...apiHeaders(), 'Cache-Control': 'no-store' } },
+    );
+  }
   try {
     await ensureBootstrapData();
     return await handleApi(req, state);

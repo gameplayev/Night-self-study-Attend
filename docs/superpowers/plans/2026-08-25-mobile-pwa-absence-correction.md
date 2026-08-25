@@ -252,20 +252,19 @@ git commit -m "iOS Android 설치형 PWA 지원"
 
 **Interfaces:**
 - Consumes: implemented PWA route and existing Vercel/Supabase deployment.
-- Produces: exact PWA deployment/install instructions and an explicit conditional Capacitor path.
+- Produces: exact PWA deployment/install instructions; App Store/Play Store and Capacitor remain out of scope.
 
 - [ ] **Step 1: Document current deployment**
 
 Update README from “웹 전용” to “설치형 웹 앱”, list PWA and dated absence correction, and link `docs/mobile-deployment.md`. Deployment doc contains:
 
-- Phase 1: Vercel HTTPS, `/api/health`, `/manifest.webmanifest`, iOS/Android device checks.
-- Phase 2 trigger: store listing required; then evaluate Capacitor, native geolocation permissions, session cookies, signing, privacy disclosure, and store review.
-- Explicit exclusions: offline attendance writes, push, store submission.
+- Vercel HTTPS, `/api/health` liveness check (not Supabase readiness), `/manifest.webmanifest`, iOS/Android device checks.
+- Explicit exclusions: offline attendance writes, push, App Store/Play Store submission, and Capacitor.
 
 - [ ] **Step 2: Run complete functional gates**
 
 ```bash
-npm test -- --runInBand src/features/teacher/TeacherView.test.tsx src/features/teacher/DailyAttendanceSection.test.tsx src/features/student/StudentView.test.tsx src/lib/attendance.test.ts src/services/appService.test.ts src/App.test.tsx
+npm test -- --runInBand src/features/teacher/TeacherView.test.tsx src/features/teacher/DailyAttendanceSection.test.tsx src/features/student/StudentView.test.tsx src/lib/attendance.test.ts src/services/appService.test.ts src/App.test.tsx src/server/attendanceApi.test.ts
 npx tsc --noEmit
 npm run build
 git diff --check
