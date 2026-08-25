@@ -9,7 +9,7 @@
 - 현재 구조는 Next.js App Router의 `app/`이 진입점과 Route Handler만 맡고, 화면은 `src/features`, 공통 계산은 `src/lib`, 브라우저 API는 `src/services`, 서버 경계는 `src/server`에 둔다.
 - [Bulletproof React](https://github.com/alan2207/bulletproof-react)는 조사 시점 GitHub 약 35.2k stars이며 feature-first 경계와 공통 계층 분리를 강조한다. 현재 프로젝트의 기존 방향과 맞으므로 전면 재작성 없이 이 원칙만 유지한다.
 - [Next.js 공식 PWA 가이드](https://nextjs.org/docs/app/guides/progressive-web-apps)는 App Router의 `app/manifest.ts`, HTTPS, 홈 화면 설치를 기본 경로로 안내한다.
-- [Capacitor](https://github.com/ionic-team/capacitor)는 조사 시점 GitHub 약 15.9k stars이며 기존 웹 앱을 iOS/Android native container로 확장할 수 있다. 스토어 등록이 확정될 때의 2단계 선택지로만 둔다.
+- 모바일 배포 결정은 설치형 PWA로 고정한다. 네이티브 스토어 바이너리 배포는 현재 범위 밖이다.
 
 ## 선택지
 
@@ -21,18 +21,12 @@
 - 장점: 한 코드베이스, 즉시 배포, 앱 심사 불필요, 기존 위치 권한 흐름 유지.
 - 한계: App Store/Play Store 검색 노출과 일부 native API 없음.
 
-### B. Capacitor wrapper — 조건부 2단계
-
-- 학교가 실제 스토어 등록을 요구할 때 추가한다.
-- Apple Developer/Google Play 계정, 서명, 개인정보 고지, 실제 기기 위치 권한 검증이 필요하다.
-- 현재 서버 Route Handler 때문에 단순 static export는 사용하지 않는다. 배포된 HTTPS 앱과 native shell의 세션·위치 정책을 별도 검증해야 한다.
-
-### C. React Native/Flutter 재작성 — 제외
+### B. React Native/Flutter 재작성 — 제외
 
 - 출결 UI, 인증, 기기 등록, 위치 검증을 중복 구현한다.
 - 현재 요구 대비 비용과 회귀 위험이 크며 서버 API 계약도 다시 설계해야 한다.
 
-권장안은 A를 지금 적용하고 B는 스토어 등록이 확정된 뒤 시작하는 것이다.
+현재 제품의 모바일 전달 방식은 A 하나이며, 네이티브 앱 재작성이나 스토어 배포를 전제로 하지 않는다.
 
 ## 결석 횟수 정정
 
@@ -96,11 +90,13 @@ Create React App 잔재인 `src/index.tsx`, `src/reportWebVitals.ts`, `public/in
 1. Supabase server key를 Vercel server environment에 유지한다.
 2. Vercel production HTTPS 배포 후 `/manifest.webmanifest`와 `/api/health`를 확인한다.
 3. Android Chrome에서 `홈 화면에 추가/앱 설치`, iOS에서 `공유 > 홈 화면에 추가`를 실제 기기로 확인한다.
-4. 학교가 스토어 검색 노출을 요구하면 Capacitor feasibility spike를 별도 승인한다.
+4. 실제 기기에서 HTTPS, 로그인, 위치 권한, 출석, 결석 정정을 확인한다.
 
 ## 범위 밖
 
 - App Store/Play Store 계정 생성, 서명, 심사 제출
+- 네이티브 스토어 바이너리 및 제출
+- Capacitor 래퍼
 - push notification
 - offline attendance write/cache
 - native biometric login

@@ -131,4 +131,4 @@ Relevant users:
 | Item | Location | Why accepted | Owner / Exit |
 | --- | --- | --- | --- |
 | 교사 표는 375px에서 내부 가로 스크롤 필요 | Teacher tables | 열 수가 많아 카드형 재구성은 별도 범위 | 모바일 교사 사용 빈도가 높아질 때 카드/열 선택 UI로 교체 |
-| App Store/Play Store 바이너리 미제공 | Deployment | 계정, 서명, 심사 및 native 가치 검토가 필요 | 학교가 스토어 등록을 확정하면 Capacitor 단계 시작 |
+| 네이티브 스토어 배포 미제공 | Deployment | 이 제품의 모바일 배포는 설치형 PWA로 한정 | App Store/Play Store 바이너리·제출은 범위 밖 |
