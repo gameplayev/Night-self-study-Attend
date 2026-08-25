@@ -22,11 +22,13 @@ import { DailyAttendanceSection } from './DailyAttendanceSection';
 import { AbsenceCorrectionDialog } from './AbsenceCorrectionDialog';
 import { StudentRosterSection } from './StudentRosterSection';
 import { TeacherManagementPanels } from './TeacherManagementPanels';
+import { SeatMapDialog } from './SeatMapDialog';
 
 export function TeacherView({
   teachers,
   students,
   records,
+  onRefreshAttendance,
   onAddTeacher,
   onAddStudent,
   onDeleteStudent,
@@ -41,6 +43,7 @@ export function TeacherView({
   teachers: Teacher[];
   students: Student[];
   records: AttendanceRecord[];
+  onRefreshAttendance: () => Promise<void>;
   onAddTeacher: (input: CreateTeacherInput) => Promise<void>;
   onAddStudent: (input: CreateStudentInput) => Promise<void>;
   onDeleteStudent: (student: Student) => Promise<void>;
@@ -66,6 +69,7 @@ export function TeacherView({
   const [correctionStudent, setCorrectionStudent] = useState<Student | null>(
     null,
   );
+  const [isSeatMapOpen, setIsSeatMapOpen] = useState(false);
   const sortedStudents = useMemo(
     () =>
       [...students].sort(
@@ -139,6 +143,7 @@ export function TeacherView({
           absentCountMap={absentCountMap}
           query={query}
           onQueryChange={setQuery}
+          onOpenSeatMap={() => setIsSeatMapOpen(true)}
           onDeleteStudent={onDeleteStudent}
           onManualAttendance={onManualAttendance}
           onCorrectAbsences={setCorrectionStudent}
@@ -168,6 +173,15 @@ export function TeacherView({
           dateKeys={absenceDateKeys}
           onCorrect={onManualAttendance}
           onClose={() => setCorrectionStudent(null)}
+        />
+      )}
+
+      {isSeatMapOpen && (
+        <SeatMapDialog
+          students={sortedStudents}
+          presenceMap={presenceMap}
+          onRefreshAttendance={onRefreshAttendance}
+          onClose={() => setIsSeatMapOpen(false)}
         />
       )}
 

@@ -637,7 +637,7 @@ function App() {
           <TeacherView
             teachers={teachers}
             students={students}
-            records={records}
+            records={records} onRefreshAttendance={async () => setRecords(await listAttendanceRecords())}
             onAddTeacher={handleAddTeacher}
             onAddStudent={handleAddStudent}
             onDeleteStudent={handleDeleteStudent}

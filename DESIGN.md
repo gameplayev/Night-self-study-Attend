@@ -95,6 +95,14 @@ Font stack: `Inter, Pretendard, Noto Sans KR, system-ui, -apple-system, BlinkMac
 - Motion: none.
 - Layout: mobile-first stack; bounded-height list owns vertical scroll.
 
+### Seat Map Dialog
+
+- Structure: native `dialog`, compact status legend, classroom zones, close action.
+- States: present, checked-out, not checked-in, unassigned seat, refresh error.
+- Accessibility: each seat exposes its number, assigned student, and status as text; Escape closes the dialog; color never carries status alone.
+- Motion: none.
+- Layout: the dialog owns vertical scroll; the 980px minimum floor-plan canvas owns horizontal scroll below tablet width so the classroom geometry stays intact. Seat cells use the 56px spacing token.
+
 ### Install Guide
 
 - Structure: native `details`/`summary` with iOS and Android steps.

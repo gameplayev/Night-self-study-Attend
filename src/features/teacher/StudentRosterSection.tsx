@@ -11,6 +11,7 @@ export function StudentRosterSection({
   presenceMap,
   query,
   onQueryChange,
+  onOpenSeatMap,
   onDeleteStudent,
   absentCountMap,
   onManualAttendance,
@@ -23,6 +24,7 @@ export function StudentRosterSection({
   absentCountMap: Map<string, number>;
   query: string;
   onQueryChange: (query: string) => void;
+  onOpenSeatMap: () => void;
   onDeleteStudent: (student: Student) => Promise<void>;
   onManualAttendance: (
     student: Student,
@@ -70,12 +72,22 @@ export function StudentRosterSection({
             학생 명단
           </h2>
         </div>
-        <input
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-          placeholder="학번 또는 이름 검색"
-          className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100 sm:w-72"
-        />
+        <div className="flex w-full items-center gap-2 sm:w-auto">
+          <button
+            type="button"
+            onClick={onOpenSeatMap}
+            className="h-10 shrink-0 rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-sky-100"
+          >
+            좌석 현황
+          </button>
+          <input
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+            placeholder="학번 또는 이름 검색"
+            aria-label="학번 또는 이름 검색"
+            className="h-10 min-w-0 flex-1 rounded-md border border-slate-300 px-3 text-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100 sm:w-72 sm:flex-none"
+          />
+        </div>
       </div>
 
       <div className="mt-5 overflow-x-auto rounded-md border border-slate-200">

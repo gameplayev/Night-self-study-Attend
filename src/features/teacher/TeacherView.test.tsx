@@ -61,7 +61,7 @@ const records: AttendanceRecord[] = [
   },
 ];
 
-test('teacher corrects the dated record behind a student absence total', () => {
+test('teacher corrects the dated record behind a student absence total', async () => {
   const onManualAttendance = jest.fn().mockResolvedValue(undefined);
 
   render(
@@ -69,6 +69,7 @@ test('teacher corrects the dated record behind a student absence total', () => {
       teachers={teachers}
       students={students}
       records={records}
+      onRefreshAttendance={jest.fn().mockResolvedValue(undefined)}
       onAddTeacher={jest.fn()}
       onAddStudent={jest.fn()}
       onDeleteStudent={jest.fn()}
@@ -99,9 +100,16 @@ test('teacher corrects the dated record behind a student absence total', () => {
     'present',
     '2026-08-03',
   );
+  await waitFor(() =>
+    expect(
+      within(dialog).getByRole('button', {
+        name: '2026-08-03 정상출석으로 수정',
+      }),
+    ).toBeEnabled(),
+  );
 });
 
-test('teacher sees scheduled dates newest first, corrects absence, and closes with Escape', () => {
+test('teacher sees scheduled dates newest first, corrects absence, and closes with Escape', async () => {
   const onManualAttendance = jest.fn().mockResolvedValue(undefined);
   const correctionRecords: AttendanceRecord[] = [
     ...records,
@@ -130,6 +138,7 @@ test('teacher sees scheduled dates newest first, corrects absence, and closes wi
       teachers={teachers}
       students={students}
       records={correctionRecords}
+      onRefreshAttendance={jest.fn().mockResolvedValue(undefined)}
       onAddTeacher={jest.fn()}
       onAddStudent={jest.fn()}
       onDeleteStudent={jest.fn()}
@@ -164,6 +173,13 @@ test('teacher sees scheduled dates newest first, corrects absence, and closes wi
     'absent',
     '2026-08-03',
   );
+  await waitFor(() =>
+    expect(
+      within(dialog).getByRole('button', {
+        name: '2026-08-03 결석으로 수정',
+      }),
+    ).toBeEnabled(),
+  );
 
   fireEvent(
     dialog,
@@ -189,6 +205,7 @@ test('teacher correction buttons stay locked until the pending correction settle
       teachers={teachers}
       students={students}
       records={records}
+      onRefreshAttendance={jest.fn().mockResolvedValue(undefined)}
       onAddTeacher={jest.fn()}
       onAddStudent={jest.fn()}
       onDeleteStudent={jest.fn()}
