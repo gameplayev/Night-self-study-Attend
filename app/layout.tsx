@@ -6,8 +6,13 @@ export const metadata: Metadata = {
   title: '야자 출석 시스템',
   description: '학생과 교사가 함께 쓰는 야간자율학습 출석 관리 앱',
   icons: {
-    icon: '/logo.jpeg',
-    apple: '/logo.jpeg',
+    icon: [
+      { url: '/logo192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/logo512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: [
+      { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
   },
   appleWebApp: {
     capable: true,

@@ -31,6 +31,7 @@
    curl -i https://운영도메인.example/manifest.webmanifest
    curl -I https://운영도메인.example/logo192.png
    curl -I https://운영도메인.example/logo512.png
+   curl -I https://운영도메인.example/apple-touch-icon.png
    ```
 
 Next.js App Router의 `app/manifest.ts`와 HTTPS 설치 경로는 [공식 Progressive Web Apps 가이드](https://nextjs.org/docs/app/guides/progressive-web-apps)를 따른다. manifest의 이름·아이콘·`start_url`·`standalone` 표시 방식은 [web.dev Web App Manifest 참고서](https://web.dev/learn/pwa/web-app-manifest?hl=en)를 따른다.
@@ -47,7 +48,7 @@ Next.js App Router의 `app/manifest.ts`와 HTTPS 설치 경로는 [공식 Progre
 각 기기에서 다음을 순서대로 확인하고 날짜·기기·결과를 기록한다.
 
 - [ ] 운영 URL이 HTTPS이며 `/api/health`가 HTTP 200이다.
-- [ ] `/manifest.webmanifest`가 HTTP 200이고 `logo192.png`, `logo512.png`가 모두 열린다.
+- [ ] `/manifest.webmanifest`가 HTTP 200이고 `logo192.png`, `logo512.png`, `apple-touch-icon.png`가 모두 열린다.
 - [ ] 교사 로그인과 로그아웃이 동작하고 세션 쿠키가 브라우저 화면에 노출되지 않는다.
 - [ ] 학생 기기 등록 후 위치 권한을 허용했을 때 현재 위치 기반 출석이 처리된다.
 - [ ] 위치 권한 거부, 로그인 만료, 잘못된 요청이 오류 메시지로 끝나며 출석 기록이 임의로 바뀌지 않는다.
