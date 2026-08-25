@@ -1,6 +1,10 @@
+import { useState } from 'react';
 import type { DailyPresence, Student } from '../../lib/attendance';
 import type { UpdateStudentInput } from '../../services/appService';
-import { StudentRosterRow } from './StudentRosterRow';
+import {
+  StudentRosterRow,
+} from './StudentRosterRow';
+import type { StudentRosterEditForm } from './StudentRosterRow';
 
 export function StudentRosterSection({
   students,
@@ -35,6 +39,25 @@ export function StudentRosterSection({
       .toLowerCase()
       .includes(query.trim().toLowerCase()),
   );
+  const [editingStudentId, setEditingStudentId] = useState<number | null>(null);
+  const [editStudent, setEditStudent] = useState<StudentRosterEditForm | null>(
+    null,
+  );
+
+  function startEditing(student: Student) {
+    setEditingStudentId(student.id);
+    setEditStudent({
+      studentNumber: student.studentNumber,
+      name: student.name,
+      seatNumber: String(student.seatNumber),
+      attendanceWeekdays: [...student.attendanceWeekdays],
+    });
+  }
+
+  function cancelEditing() {
+    setEditingStudentId(null);
+    setEditStudent(null);
+  }
 
   return (
     <div className="min-w-0 rounded-md border border-slate-200 bg-white p-5 shadow-sm">
@@ -86,6 +109,12 @@ export function StudentRosterSection({
                 student={student}
                 status={presenceMap.get(student.studentNumber) ?? null}
                 absentCount={absentCountMap.get(student.studentNumber) ?? 0}
+                editStudent={
+                  editingStudentId === student.id ? editStudent : null
+                }
+                onStartEditing={startEditing}
+                onEditStudentChange={(value) => setEditStudent(value)}
+                onCancelEditing={cancelEditing}
                 onDeleteStudent={onDeleteStudent}
                 onManualAttendance={onManualAttendance}
                 onResetDevices={onResetDevices}

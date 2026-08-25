@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import {
   DEFAULT_ATTENDANCE_WEEKDAYS,
   getTodayDateKey,
@@ -14,8 +13,9 @@ import {
   normalizeStudentNumberInput,
 } from '../../lib/students';
 import type { UpdateStudentInput } from '../../services/appService';
+import { StudentRosterActions } from './StudentRosterActions';
 
-type EditStudentForm = {
+export type StudentRosterEditForm = {
   readonly studentNumber: string;
   readonly name: string;
   readonly seatNumber: string;
@@ -34,6 +34,10 @@ export type StudentRosterRowProps = {
   readonly student: Student;
   readonly status: DailyPresence;
   readonly absentCount: number;
+  readonly editStudent: StudentRosterEditForm | null;
+  readonly onStartEditing: (student: Student) => void;
+  readonly onEditStudentChange: (editStudent: StudentRosterEditForm) => void;
+  readonly onCancelEditing: () => void;
   readonly onDeleteStudent: (student: Student) => Promise<void>;
   readonly onManualAttendance: (
     student: Student,
@@ -50,12 +54,15 @@ export function StudentRosterRow({
   student,
   status,
   absentCount,
+  editStudent,
+  onStartEditing,
+  onEditStudentChange,
+  onCancelEditing,
   onDeleteStudent,
   onManualAttendance,
   onResetDevices,
   onUpdateStudent,
 }: StudentRosterRowProps) {
-  const [editStudent, setEditStudent] = useState<EditStudentForm | null>(null);
   const isEditing = editStudent !== null;
   const parsedClassLabel = isEditing
     ? formatParsedStudentClass(editStudent.studentNumber)
@@ -65,26 +72,15 @@ export function StudentRosterRow({
     student.attendanceWeekdays,
   );
 
-  function startEditing() {
-    setEditStudent({
-      studentNumber: student.studentNumber,
-      name: student.name,
-      seatNumber: String(student.seatNumber),
-      attendanceWeekdays: [...student.attendanceWeekdays],
-    });
-  }
-
   function toggleAttendanceWeekday(
     weekday: AttendanceWeekday,
     checked: boolean,
   ) {
-    setEditStudent((value) => {
-      if (!value) return value;
-      const attendanceWeekdays = checked
-        ? [...value.attendanceWeekdays, weekday].sort((left, right) => left - right)
-        : value.attendanceWeekdays.filter((item) => item !== weekday);
-      return { ...value, attendanceWeekdays };
-    });
+    if (!editStudent) return;
+    const attendanceWeekdays = checked
+      ? [...editStudent.attendanceWeekdays, weekday].sort((left, right) => left - right)
+      : editStudent.attendanceWeekdays.filter((item) => item !== weekday);
+    onEditStudentChange({ ...editStudent, attendanceWeekdays });
   }
 
   async function saveStudent() {
@@ -93,7 +89,7 @@ export function StudentRosterRow({
       ...editStudent,
       seatNumber: Number(editStudent.seatNumber),
     });
-    setEditStudent(null);
+    onCancelEditing();
   }
 
   return (
@@ -103,14 +99,10 @@ export function StudentRosterRow({
           <input
             value={editStudent.seatNumber}
             onChange={(event) =>
-              setEditStudent((value) =>
-                value
-                  ? {
-                      ...value,
-                      seatNumber: event.target.value.replace(/\D/g, ''),
-                    }
-                  : value,
-              )
+              onEditStudentChange({
+                ...editStudent,
+                seatNumber: event.target.value.replace(/\D/g, ''),
+              })
             }
             inputMode="numeric"
             className="h-8 w-16 rounded-md border border-slate-300 px-2 text-sm"
@@ -124,14 +116,10 @@ export function StudentRosterRow({
           <input
             value={editStudent.studentNumber}
             onChange={(event) =>
-              setEditStudent((value) =>
-                value
-                  ? {
-                      ...value,
-                      studentNumber: normalizeStudentNumberInput(event.target.value),
-                    }
-                  : value,
-              )
+              onEditStudentChange({
+                ...editStudent,
+                studentNumber: normalizeStudentNumberInput(event.target.value),
+              })
             }
             inputMode="numeric"
             maxLength={5}
@@ -147,9 +135,7 @@ export function StudentRosterRow({
           <input
             value={editStudent.name}
             onChange={(event) =>
-              setEditStudent((value) =>
-                value ? { ...value, name: event.target.value } : value,
-              )
+              onEditStudentChange({ ...editStudent, name: event.target.value })
             }
             className="h-8 w-24 rounded-md border border-slate-300 px-2 text-sm"
           />
@@ -222,75 +208,18 @@ export function StudentRosterRow({
               : '미출석'}
         </span>
       </td>
-      <td className="px-5 py-3">
-        <div className="flex flex-wrap gap-2">
-          {isEditing ? (
-            <>
-              <button
-                type="button"
-                onClick={() => void saveStudent()}
-                disabled={editStudent.attendanceWeekdays.length === 0}
-                className="h-8 rounded-md border border-sky-300 px-3 text-xs font-medium text-sky-700 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                저장
-              </button>
-              <button
-                type="button"
-                onClick={() => setEditStudent(null)}
-                className="h-8 rounded-md border border-slate-300 px-3 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
-              >
-                취소
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={startEditing}
-              className="h-8 rounded-md border border-sky-300 px-3 text-xs font-medium text-sky-700 transition hover:bg-sky-50"
-            >
-              수정
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => void onManualAttendance(student, 'check_in')}
-            className="h-8 rounded-md border border-emerald-300 px-3 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50"
-          >
-            출석
-          </button>
-          <button
-            type="button"
-            onClick={() => void onManualAttendance(student, 'check_out')}
-            className="h-8 rounded-md border border-amber-300 px-3 text-xs font-medium text-amber-700 transition hover:bg-amber-50"
-          >
-            퇴실
-          </button>
-          {canMarkAbsentToday && (
-            <button
-              type="button"
-              onClick={() => void onManualAttendance(student, 'absent')}
-              className="h-8 rounded-md border border-slate-300 px-3 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
-            >
-              미출석
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => void onResetDevices(student)}
-            disabled={student.deviceCount === 0}
-            className="h-8 rounded-md border border-slate-300 px-3 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            기기 초기화
-          </button>
-          <button
-            type="button"
-            onClick={() => void onDeleteStudent(student)}
-            className="h-8 rounded-md border border-rose-300 px-3 text-xs font-medium text-rose-700 transition hover:bg-rose-50"
-          >
-            삭제
-          </button>
-        </div>
-      </td>
+      <StudentRosterActions
+        student={student}
+        isEditing={isEditing}
+        canSave={editStudent?.attendanceWeekdays.length !== 0}
+        canMarkAbsentToday={canMarkAbsentToday}
+        onStartEditing={() => onStartEditing(student)}
+        onSave={saveStudent}
+        onCancelEditing={onCancelEditing}
+        onDeleteStudent={onDeleteStudent}
+        onManualAttendance={onManualAttendance}
+        onResetDevices={onResetDevices}
+      />
     </tr>
   );
 }

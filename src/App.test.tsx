@@ -173,3 +173,74 @@ test('teacher edits one student attendance weekdays and absence total updates', 
   expect(within(studentRow).getByText('월')).toBeVisible();
   expect(globalSettingsRequested).toBe(false);
 });
+
+test('teacher switches roster editing to the second student', async () => {
+  jest.spyOn(window, 'fetch').mockImplementation((input) => {
+    if (input === '/api/device') {
+      return jsonResponse({ id: 'device', label: '브라우저 기기' });
+    }
+    if (input === '/api/session') {
+      return jsonResponse({
+        user: {
+          id: 1,
+          username: 'teacher',
+          displayName: '김교사',
+          role: 'teacher',
+          studentNumber: null,
+        },
+        expiresAt: '2099-01-01T00:00:00.000Z',
+        csrfToken: 'csrf-token',
+      });
+    }
+    if (input === '/api/attendance') {
+      return jsonResponse([]);
+    }
+    if (input === '/api/students') {
+      return jsonResponse([
+        {
+          id: 1,
+          studentNumber: '10101',
+          name: '홍길동',
+          grade: 1,
+          classNumber: 1,
+          seatNumber: 1,
+          deviceCount: 0,
+          attendanceWeekdays: [1, 2],
+        },
+        {
+          id: 2,
+          studentNumber: '10102',
+          name: '김학생',
+          grade: 1,
+          classNumber: 1,
+          seatNumber: 2,
+          deviceCount: 0,
+          attendanceWeekdays: [1, 2],
+        },
+      ]);
+    }
+    if (input === '/api/teachers') {
+      return jsonResponse([{ id: 1, name: '김교사' }]);
+    }
+    throw new Error(`Unexpected request: ${String(input)}`);
+  });
+
+  render(<App />);
+
+  const firstStudentRow = (await screen.findByText('홍길동')).closest('tr');
+  const secondStudentRow = screen.getByText('김학생').closest('tr');
+  expect(firstStudentRow).not.toBeNull();
+  expect(secondStudentRow).not.toBeNull();
+  if (!firstStudentRow || !secondStudentRow) return;
+
+  fireEvent.click(within(firstStudentRow).getByRole('button', { name: '수정' }));
+  expect(within(firstStudentRow).getByRole('button', { name: '저장' })).toBeVisible();
+
+  fireEvent.click(within(secondStudentRow).getByRole('button', { name: '수정' }));
+
+  expect(within(firstStudentRow).getByRole('button', { name: '수정' })).toBeVisible();
+  expect(
+    within(firstStudentRow).queryByRole('button', { name: '저장' }),
+  ).not.toBeInTheDocument();
+  expect(within(secondStudentRow).getByRole('button', { name: '저장' })).toBeVisible();
+});
