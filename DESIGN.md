@@ -101,8 +101,8 @@ Font stack: `Inter, Pretendard, Noto Sans KR, system-ui, -apple-system, BlinkMac
 - States: present, checked-out, not checked-in, unassigned seat, refresh error.
 - Accessibility: each seat exposes its number, assigned student, and status as text; Escape closes the dialog; color never carries status alone.
 - Motion: none.
-- Layout: the dialog owns vertical scroll and expands through `max-w-screen-2xl`; the 980px minimum floor-plan canvas owns horizontal scroll below tablet width so the classroom geometry stays intact. Seat cells use the 56px spacing token.
-- Contrast: the floor-plan canvas uses `slate-100`; unassigned seats retain a dashed edge but use `white`, `slate-300`, and `slate-600` so adjacent seats remain distinct.
+- Layout: the dialog owns vertical scroll and expands through `max-w-screen-2xl`; the 980px minimum floor-plan canvas owns horizontal scroll below tablet width so the classroom geometry stays intact. Seat cells use the 56px spacing token, and the main desk rows use 16px gaps.
+- Zone color: the teacher desk reuses the sky information ramp so it remains distinct from amber attendance warnings.
 
 ### Install Guide
 

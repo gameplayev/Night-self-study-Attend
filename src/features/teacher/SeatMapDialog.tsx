@@ -76,7 +76,7 @@ function seatTone(state: SeatState) {
     case 'not_checked_in':
       return 'border-slate-300 bg-white text-slate-700';
     case 'unassigned':
-      return 'border-dashed border-slate-300 bg-white text-slate-600';
+      return 'border-dashed border-slate-200 bg-slate-50 text-slate-400';
   }
 }
 
@@ -217,10 +217,10 @@ export function SeatMapDialog({
           <span className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-emerald-800">출석중</span>
           <span className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-amber-800">퇴실</span>
           <span className="rounded-md border border-slate-300 bg-white px-2 py-1 text-slate-700">미출석</span>
-          <span className="rounded-md border border-dashed border-slate-300 bg-white px-2 py-1 text-slate-600">미배정</span>
+          <span className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-2 py-1 text-slate-500">미배정</span>
         </div>
 
-        <div className="mt-5 overflow-x-auto rounded-md border border-slate-200 bg-slate-100 p-4">
+        <div className="mt-5 overflow-x-auto rounded-md border border-slate-200 bg-slate-50 p-4">
           <div className="min-w-[980px] space-y-4" role="list" aria-label="야자실 좌석 배치">
             <div className="ml-auto grid w-[620px] grid-cols-7 gap-2">
               {TOP_ROW.map(renderSeat)}
@@ -232,10 +232,10 @@ export function SeatMapDialog({
               </div>
               <div className="space-y-4">
                 {UPPER_DESKS.map((row) => (
-                  <div key={row[0]} className="grid grid-cols-6 gap-2">{row.map(renderSeat)}</div>
+                  <div key={row[0]} className="grid grid-cols-6 gap-4">{row.map(renderSeat)}</div>
                 ))}
                 {MIDDLE_DESKS.map((row) => (
-                  <div key={row[0]} className="grid grid-cols-6 gap-2">{row.map(renderSeat)}</div>
+                  <div key={row[0]} className="grid grid-cols-6 gap-4">{row.map(renderSeat)}</div>
                 ))}
               </div>
               <div className="grid gap-2">{RIGHT_ROW.map(renderSeat)}</div>
@@ -257,7 +257,7 @@ export function SeatMapDialog({
               ))}
             </div>
 
-            <div className="ml-auto w-[580px] rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm font-medium text-amber-800">
+            <div className="ml-auto w-[580px] rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-center text-sm font-medium text-sky-700">
               지도교사 자리
             </div>
           </div>
