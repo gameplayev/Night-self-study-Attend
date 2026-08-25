@@ -241,7 +241,7 @@ export function SeatMapDialog({
               <div className="grid gap-2">{RIGHT_ROW.map(renderSeat)}</div>
             </div>
 
-            <div className="grid grid-cols-[1fr_280px_280px] items-end gap-6">
+            <div className="grid grid-cols-[1fr_280px_280px] items-start gap-6">
               <div className="space-y-4">
                 <div className="grid grid-cols-7 gap-2">{LEFT_UPPER_ROW.map(renderSeat)}</div>
                 <div className="grid grid-cols-8 gap-2">{LEFT_LOWER_ROW.map(renderSeat)}</div>
