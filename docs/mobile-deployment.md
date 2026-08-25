@@ -26,7 +26,7 @@
    npm run build
    ```
 
-5. 배포 직후 다음 응답을 기록한다. `/api/health`는 HTTP 200, manifest는 HTTP 200과 `application/manifest+json`을 기대한다. 404/5xx면 모바일 설치를 진행하지 않는다.
+5. 배포 직후 다음 응답을 기록한다. `/api/health`의 HTTP 200은 Next.js 프로세스와 라우터의 생존만 증명하며 Supabase 키, 스키마, 읽기 준비 상태는 검증하지 않는다. 404/5xx면 중단하고, 200이어도 이것만으로 배포나 모바일 설치를 승인하지 않는다. 최신 스키마와 환경 변수 적용 후 실제 교사 로그인과 출결 화면 데이터 로드까지 성공해야 아래 실제 기기 스모크 체크로 진행한다. manifest는 HTTP 200과 `application/manifest+json`을 기대한다.
 
    ```bash
    curl -i https://운영도메인.example/api/health
@@ -49,9 +49,9 @@ Next.js App Router의 `app/manifest.ts`와 HTTPS 설치 경로는 [공식 Progre
 
 각 기기에서 다음을 순서대로 확인하고 날짜·기기·결과를 기록한다.
 
-- [ ] 운영 URL이 HTTPS이며 `/api/health`가 HTTP 200이다.
+- [ ] 운영 URL이 HTTPS이며 `/api/health`가 HTTP 200이다. 이는 liveness 확인일 뿐 준비 완료 판정이 아니다.
 - [ ] `/manifest.webmanifest`가 HTTP 200이고 `logo192.png`, `logo512.png`, `apple-touch-icon.png`가 모두 열린다.
-- [ ] 교사 로그인과 로그아웃이 동작하고 세션 쿠키가 브라우저 화면에 노출되지 않는다.
+- [ ] 최신 스키마와 환경 변수가 적용된 상태에서 교사 로그인, 출결 화면 데이터 로드, 로그아웃이 동작하고 세션 쿠키가 브라우저 화면에 노출되지 않는다.
 - [ ] 학생 기기 등록 후 위치 권한을 허용했을 때 현재 위치 기반 출석이 처리된다.
 - [ ] 위치 권한 거부, 로그인 만료, 잘못된 요청이 오류 메시지로 끝나며 출석 기록이 임의로 바뀌지 않는다.
 - [ ] 학생 출석과 퇴실이 각각 한 번씩 처리된다.
@@ -63,8 +63,8 @@ Next.js App Router의 `app/manifest.ts`와 HTTPS 설치 경로는 [공식 Progre
 
 ## 모니터링과 롤백
 
-- 배포 후 `/api/health`를 외부 모니터링 대상으로 등록하고 HTTP 200이 아닌 응답과 응답 지연을 알림으로 받는다.
-- Vercel 배포 로그와 Supabase 로그에서 로그인·출석·정정 오류를 확인한다. 서비스 역할 키는 로그에 출력하지 않는다.
+- 배포 후 `/api/health`를 liveness 모니터링 대상으로 등록하고 HTTP 200이 아닌 응답과 응답 지연을 알림으로 받는다. 이 응답을 Supabase readiness로 해석하지 않는다.
+- Vercel 배포 로그와 Supabase 로그에서 로그인·출석·정정 오류를 확인하고, 주기적으로 인증된 교사 로그인·출결 화면 로드·수동 정정 스모크를 함께 수행한다. 서비스 역할 키나 모니터링용 로그인 정보를 코드와 로그에 남기지 않는다.
 - 오류가 확인되면 Vercel `Deployments`에서 마지막 정상 배포를 선택해 `Promote to Production`으로 되돌린다.
 - 롤백 후 `/api/health`, `/manifest.webmanifest`, 로그인, 출석을 다시 확인하고 문제 배포의 환경 변수·로그를 보존한다.
 
