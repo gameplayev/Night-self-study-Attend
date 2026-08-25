@@ -717,7 +717,10 @@ async function studentAccount(studentNumber: string) {
   } satisfies StudentAccountRow;
 }
 
-function loginAttemptKey(bucket: 'student' | 'teacher', subject: string) {
+function loginAttemptKey(
+  bucket: 'student' | 'teacher' | 'pin-change',
+  subject: string,
+) {
   return sha256Hex(`${bucket}\0${subject.normalize('NFKC').toLowerCase()}`);
 }
 
@@ -1138,6 +1141,45 @@ async function handleApi(req: NextRequest, state: ApiState) {
       .delete()
       .eq('token_hash', session.tokenHash);
     if (error) failFromDatabase(error);
+    appendCookie(state, SESSION_COOKIE, '', {
+      maxAge: 0,
+      secure: IS_PRODUCTION,
+    });
+    return sendEmpty(state);
+  }
+
+  if (req.method === 'POST' && pathname === '/api/students/me/pin') {
+    const session = await requireRole(req, 'student');
+    requireCsrf(req, session);
+    const body = await readJson(req);
+    const currentPin = assertStudentPin(body.currentPin);
+    const newPin = assertStudentPin(body.newPin);
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('password_hash')
+      .eq('id', session.user.id)
+      .eq('role', 'student')
+      .maybeSingle<{ password_hash: string }>();
+    if (userError) failFromDatabase(userError);
+    if (!user) fail('학생 계정을 찾지 못했습니다.', 404);
+
+    const attemptKey = loginAttemptKey('pin-change', String(session.user.id));
+    await consumeLoginAttempt(attemptKey, session.user.id);
+    if (!(await verifySecret(currentPin, user.password_hash))) {
+      fail('현재 PIN이 올바르지 않습니다.', 401);
+    }
+
+    const { data: changed, error: changeError } = await supabase.rpc(
+      'change_student_pin',
+      {
+        p_user_id: session.user.id,
+        p_expected_password_hash: user.password_hash,
+        p_new_password_hash: await hashSecret(newPin),
+      },
+    );
+    if (changeError) failFromDatabase(changeError, 'PIN을 변경하지 못했습니다.');
+    if (changed !== true) fail('PIN이 이미 변경되었습니다. 다시 로그인해 주세요.', 409);
+
     appendCookie(state, SESSION_COOKIE, '', {
       maxAge: 0,
       secure: IS_PRODUCTION,

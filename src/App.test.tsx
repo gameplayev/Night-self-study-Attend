@@ -1,6 +1,34 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import App from './App';
 
+const dialogPrototype = HTMLDialogElement.prototype;
+const originalShowModal = dialogPrototype.showModal;
+const originalClose = dialogPrototype.close;
+
+beforeAll(() => {
+  if (!originalShowModal) {
+    Object.defineProperty(dialogPrototype, 'showModal', {
+      configurable: true,
+      value: function showModal(this: HTMLDialogElement) {
+        this.open = true;
+      },
+    });
+  }
+  if (!originalClose) {
+    Object.defineProperty(dialogPrototype, 'close', {
+      configurable: true,
+      value: function close(this: HTMLDialogElement) {
+        this.open = false;
+      },
+    });
+  }
+});
+
+afterAll(() => {
+  if (!originalShowModal) Reflect.deleteProperty(dialogPrototype, 'showModal');
+  if (!originalClose) Reflect.deleteProperty(dialogPrototype, 'close');
+});
+
 afterEach(() => {
   jest.restoreAllMocks();
 });
@@ -194,6 +222,56 @@ test('student device registration sends the locally entered four-digit PIN', asy
       }),
     );
   });
+});
+
+test('logged-in student changes PIN and returns to login', async () => {
+  let pinChangeBody: BodyInit | null | undefined;
+  jest.spyOn(window, 'fetch').mockImplementation((input, init) => {
+    if (input === '/api/device') {
+      return jsonResponse({ id: 'device', label: '브라우저 기기' });
+    }
+    if (input === '/api/session') {
+      return jsonResponse({
+        user: {
+          id: 1,
+          username: '20101',
+          displayName: '김민준',
+          role: 'student',
+          studentNumber: '20101',
+        },
+        expiresAt: '2099-01-01T00:00:00.000Z',
+        csrfToken: 'csrf-token',
+      });
+    }
+    if (input === '/api/attendance') return jsonResponse([]);
+    if (input === '/api/students/me/pin') {
+      pinChangeBody = init?.body;
+      return Promise.resolve(new Response(null, { status: 204 }));
+    }
+    throw new Error(`Unexpected request: ${String(input)}`);
+  });
+
+  render(<App />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'PIN 변경' }),
+  );
+  fireEvent.change(screen.getByLabelText('현재 PIN'), {
+    target: { value: '0000' },
+  });
+  fireEvent.change(screen.getByLabelText('새 PIN'), {
+    target: { value: '0123' },
+  });
+  fireEvent.change(screen.getByLabelText('새 PIN 확인'), {
+    target: { value: '0123' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: '변경하기' }));
+
+  await waitFor(() => {
+    expect(pinChangeBody).toBe(
+      JSON.stringify({ currentPin: '0000', newPin: '0123' }),
+    );
+  });
+  expect(await screen.findByText('학생 확인')).toBeInTheDocument();
 });
 
 test('teacher edits one student attendance weekdays and absence total updates', async () => {

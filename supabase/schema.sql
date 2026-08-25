@@ -300,6 +300,38 @@ begin
 end;
 $$;
 
+drop function if exists public.change_student_pin(bigint, text, text);
+
+create function public.change_student_pin(
+  p_user_id bigint,
+  p_expected_password_hash text,
+  p_new_password_hash text
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  v_password_hash text;
+begin
+  select password_hash into v_password_hash
+  from public.users
+  where id = p_user_id and role = 'student' and student_id is not null
+  for update;
+  if not found or v_password_hash is distinct from p_expected_password_hash then
+    return false;
+  end if;
+
+  update public.users
+  set password_hash = p_new_password_hash
+  where id = p_user_id;
+  delete from public.web_sessions where user_id = p_user_id;
+  delete from public.auth_login_attempts where user_id = p_user_id;
+  return true;
+end;
+$$;
+
 drop function if exists public.rotate_student_pin(bigint, text);
 
 create or replace function public.update_student_profile(
@@ -541,6 +573,7 @@ revoke all on table public.auth_login_attempts from public, anon, authenticated;
 revoke all on function public.consume_login_attempt(text, bigint, integer, integer) from public, anon, authenticated;
 revoke all on function public.clear_login_attempt(text) from public, anon, authenticated;
 revoke all on function public.claim_student_device(uuid, text, text, bigint, integer) from public, anon, authenticated;
+revoke all on function public.change_student_pin(bigint, text, text) from public, anon, authenticated;
 revoke all on function public.update_student_profile(bigint, text, text, integer, integer, integer, integer[], text) from public, anon, authenticated;
 revoke all on function public.reset_student_access(bigint) from public, anon, authenticated;
 revoke all on function public.update_teacher_account(bigint, text, text) from public, anon, authenticated;
@@ -549,6 +582,7 @@ revoke all on function public.record_self_attendance(bigint, uuid, text) from pu
 grant execute on function public.consume_login_attempt(text, bigint, integer, integer) to service_role;
 grant execute on function public.clear_login_attempt(text) to service_role;
 grant execute on function public.claim_student_device(uuid, text, text, bigint, integer) to service_role;
+grant execute on function public.change_student_pin(bigint, text, text) to service_role;
 grant execute on function public.update_student_profile(bigint, text, text, integer, integer, integer, integer[], text) to service_role;
 grant execute on function public.reset_student_access(bigint) to service_role;
 grant execute on function public.update_teacher_account(bigint, text, text) to service_role;

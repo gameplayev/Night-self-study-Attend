@@ -18,6 +18,8 @@ declare
   v_result jsonb;
   v_function regprocedure;
   v_index integer;
+  v_device_count_before bigint;
+  v_attendance_count_before bigint;
 begin
   insert into public.students (
     student_number, name, grade, class_number, seat_number, attendance_weekdays
@@ -147,6 +149,49 @@ begin
     end if;
   end if;
 
+  -- Self-service PIN changes revoke sessions without altering devices or attendance.
+  select count(*) into v_device_count_before
+  from public.browser_devices where student_id = v_student_id;
+  select count(*) into v_attendance_count_before
+  from public.attendance_records where student_id = v_student_id;
+  insert into public.web_sessions (token_hash, csrf_token_hash, user_id, expires_at)
+  values
+    ('pin-session-1-' || v_suffix, 'pin-csrf-1-' || v_suffix,
+     v_student_user_id, clock_timestamp() + interval '1 hour'),
+    ('pin-session-2-' || v_suffix, 'pin-csrf-2-' || v_suffix,
+     v_student_user_id, clock_timestamp() + interval '1 hour');
+  perform public.consume_login_attempt(repeat('4', 64), v_student_user_id, 5, 900);
+  if not public.change_student_pin(
+    v_student_user_id, 'student-old-hash', 'student-self-changed-hash'
+  ) then
+    raise exception 'student PIN change returned false';
+  end if;
+  if not exists (select 1 from public.users
+                 where id = v_student_user_id
+                   and password_hash = 'student-self-changed-hash')
+     or exists (select 1 from public.web_sessions where user_id = v_student_user_id)
+     or exists (select 1 from public.auth_login_attempts where user_id = v_student_user_id)
+     or (select count(*) from public.browser_devices
+         where student_id = v_student_id) <> v_device_count_before
+     or (select count(*) from public.attendance_records
+         where student_id = v_student_id) <> v_attendance_count_before then
+    raise exception 'student PIN change altered or retained the wrong account artifacts';
+  end if;
+
+  -- A stale concurrent request cannot overwrite a newer PIN or revoke its session.
+  insert into public.web_sessions (token_hash, csrf_token_hash, user_id, expires_at)
+  values ('pin-stale-session-' || v_suffix, 'pin-stale-csrf-' || v_suffix,
+          v_student_user_id, clock_timestamp() + interval '1 hour');
+  if public.change_student_pin(
+    v_student_user_id, 'student-old-hash', 'student-stale-overwrite'
+  ) or not exists (select 1 from public.users
+                   where id = v_student_user_id
+                     and password_hash = 'student-self-changed-hash')
+     or not exists (select 1 from public.web_sessions
+                    where token_hash = 'pin-stale-session-' || v_suffix) then
+    raise exception 'stale PIN change overwrote credentials or revoked a valid session';
+  end if;
+
   -- Identity/PIN updates revoke sessions without discarding registered devices.
   insert into public.web_sessions (token_hash, csrf_token_hash, user_id, expires_at)
   values ('student-session-' || v_suffix, 'student-csrf-' || v_suffix, v_student_user_id,
@@ -263,6 +308,7 @@ begin
     'public.consume_login_attempt(text,bigint,integer,integer)'::regprocedure,
     'public.clear_login_attempt(text)'::regprocedure,
     'public.claim_student_device(uuid,text,text,bigint,integer)'::regprocedure,
+    'public.change_student_pin(bigint,text,text)'::regprocedure,
     'public.update_student_profile(bigint,text,text,integer,integer,integer,integer[],text)'::regprocedure,
     'public.reset_student_access(bigint)'::regprocedure,
     'public.update_teacher_account(bigint,text,text)'::regprocedure,

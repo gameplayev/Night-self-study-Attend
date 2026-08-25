@@ -163,6 +163,18 @@ export async function logout(csrfToken: string) {
   });
 }
 
+export async function changeStudentPin(
+  currentPin: string,
+  newPin: string,
+  csrfToken: string,
+) {
+  return apiRequest<void>('/api/students/me/pin', {
+    method: 'POST',
+    body: JSON.stringify({ currentPin, newPin }),
+    csrfToken,
+  });
+}
+
 export async function listStudents() {
   return apiRequest<Student[]>('/api/students');
 }

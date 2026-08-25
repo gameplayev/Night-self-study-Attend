@@ -14,6 +14,7 @@ import {
   Teacher,
   UpdateStudentInput,
   UpdateTeacherInput,
+  changeStudentPin,
   checkStudentAccess,
   createTeacher,
   createStudent,
@@ -45,6 +46,7 @@ import { LoginView } from './features/auth/LoginView';
 import { PendingRegistration } from './features/auth/types';
 import { LocationGuideModal } from './features/location/LocationGuideModal';
 import { StudentView } from './features/student/StudentView';
+import { StudentPinDialog } from './features/student/StudentPinDialog';
 import { TeacherView } from './features/teacher/TeacherView';
 import { FeedbackMessage } from './types/ui';
 
@@ -63,6 +65,7 @@ function App() {
   const [isWorking, setIsWorking] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLocationGuideOpen, setIsLocationGuideOpen] = useState(false);
+  const [isStudentPinDialogOpen, setIsStudentPinDialogOpen] = useState(false);
   const [locationCapability, setLocationCapability] =
     useState<LocationCapability | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -204,14 +207,25 @@ function App() {
     }
   }
 
-  async function handleLogout() {
-    if (session) await logout(session.csrfToken);
+  function clearAuthenticatedState() {
     setSession(null);
     setStudents([]);
     setTeachers([]);
     setRecords([]);
     setPendingRegistration(null);
     setMessage(null);
+    setIsStudentPinDialogOpen(false);
+  }
+
+  async function handleLogout() {
+    if (session) await logout(session.csrfToken);
+    clearAuthenticatedState();
+  }
+
+  async function handleChangeStudentPin(currentPin: string, newPin: string) {
+    if (!session) return;
+    await changeStudentPin(currentPin, newPin, session.csrfToken);
+    clearAuthenticatedState();
   }
 
   // 위치 권한 안내를 아직 보지 않은 학생은 출석 처리보다 안내를 먼저 보게 한다.
@@ -604,6 +618,15 @@ function App() {
                 {session.user.role === 'teacher' ? '교사 계정' : '학생 계정'}
               </p>
             </div>
+            {session.user.role === 'student' && (
+              <button
+                type="button"
+                onClick={() => setIsStudentPinDialogOpen(true)}
+                className="h-10 rounded-md border border-slate-300 px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                PIN 변경
+              </button>
+            )}
             <button
               type="button"
               onClick={() => void handleLogout()}
@@ -653,6 +676,12 @@ function App() {
           capability={locationCapability}
           onClose={() => setIsLocationGuideOpen(false)}
           onContinue={() => void handleContinueFromLocationGuide()}
+        />
+      )}
+      {session.user.role === 'student' && isStudentPinDialogOpen && (
+        <StudentPinDialog
+          onChangePin={handleChangeStudentPin}
+          onClose={() => setIsStudentPinDialogOpen(false)}
         />
       )}
     </main>
