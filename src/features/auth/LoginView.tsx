@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import { DeviceIdentity } from '../../services/deviceService';
 import { PendingRegistration } from './types';
 import { normalizeStudentNumberInput } from '../../lib/students';
+import { InstallGuide } from '../install/InstallGuide';
 
 export function LoginView({
   device,
@@ -87,8 +88,9 @@ export function LoginView({
   );
 
   return (
-    <main className="grid min-h-screen place-items-center bg-slate-100 px-4 text-slate-900">
-      <section className="w-full max-w-md rounded-md border border-slate-200 bg-white p-6 shadow-sm">
+    <main className="flex min-h-[100dvh] items-center justify-center bg-slate-100 px-4 py-4 text-slate-900">
+      <div className="w-full max-w-md">
+        <section className="rounded-md border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-center gap-3">
           <img
             src="/logo.jpeg"
@@ -171,7 +173,9 @@ export function LoginView({
             {error}
           </p>
         )}
-      </section>
+        </section>
+        <InstallGuide />
+      </div>
     </main>
   );
 }
