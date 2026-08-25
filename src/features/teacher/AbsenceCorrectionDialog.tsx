@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import type { SyntheticEvent } from 'react';
 import {
   getDailyAttendanceResult,
   getDailyAttendanceSummary,
@@ -45,12 +46,23 @@ export function AbsenceCorrectionDialog({
     if (dialog && !dialog.open) dialog.showModal();
   }, []);
 
+  function handleClose() {
+    const dialog = dialogRef.current;
+    if (dialog?.open) dialog.close();
+    onClose();
+  }
+
+  function handleCancel(event: SyntheticEvent<HTMLDialogElement>) {
+    event.preventDefault();
+    handleClose();
+  }
+
   return (
     <dialog
       ref={dialogRef}
       aria-labelledby="absence-correction-title"
-      onCancel={onClose}
-      className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-hidden rounded-md border border-slate-200 bg-white p-0 text-slate-900 shadow-xl backdrop:bg-slate-900/40"
+      onCancel={handleCancel}
+      className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-md border border-slate-200 bg-white p-0 text-slate-900 shadow-xl backdrop:bg-slate-900/40"
     >
       <div className="p-5">
         <div className="flex items-start justify-between gap-4">
@@ -64,14 +76,14 @@ export function AbsenceCorrectionDialog({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             className="h-10 shrink-0 rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
           >
             닫기
           </button>
         </div>
 
-        <div className="mt-5 max-h-96 space-y-3 overflow-y-auto">
+        <div className="mt-5 space-y-3">
           {scheduledDateKeys.map((dateKey) => {
             const status = getDailyAttendanceResult(
               getDailyAttendanceSummary(student.studentNumber, records, dateKey),

@@ -8,20 +8,30 @@ const originalShowModal = Object.getOwnPropertyDescriptor(
   dialogPrototype,
   'showModal',
 );
+const originalClose = Object.getOwnPropertyDescriptor(dialogPrototype, 'close');
 
 beforeAll(() => {
-  if (originalShowModal) return;
-  Object.defineProperty(dialogPrototype, 'showModal', {
-    configurable: true,
-    value: function showModal(this: HTMLDialogElement) {
-      this.open = true;
-    },
-  });
+  if (!originalShowModal) {
+    Object.defineProperty(dialogPrototype, 'showModal', {
+      configurable: true,
+      value: function showModal(this: HTMLDialogElement) {
+        this.open = true;
+      },
+    });
+  }
+  if (!originalClose) {
+    Object.defineProperty(dialogPrototype, 'close', {
+      configurable: true,
+      value: function close(this: HTMLDialogElement) {
+        this.open = false;
+      },
+    });
+  }
 });
 
 afterAll(() => {
-  if (originalShowModal) return;
-  Reflect.deleteProperty(dialogPrototype, 'showModal');
+  if (!originalShowModal) Reflect.deleteProperty(dialogPrototype, 'showModal');
+  if (!originalClose) Reflect.deleteProperty(dialogPrototype, 'close');
 });
 
 const students: Student[] = [
@@ -75,7 +85,9 @@ test('teacher corrects the dated record behind a student absence total', () => {
   fireEvent.click(
     screen.getByRole('button', { name: '홍길동 결석 기록 수정' }),
   );
-  const dialog = screen.getByRole('dialog', { name: '홍길동 결석 기록 수정' });
+  const dialog = screen.getByRole<HTMLDialogElement>('dialog', {
+    name: '홍길동 결석 기록 수정',
+  });
   fireEvent.click(
     within(dialog).getByRole('button', {
       name: '2026-08-03 정상출석으로 수정',
@@ -134,7 +146,9 @@ test('teacher sees scheduled dates newest first, corrects absence, and closes wi
   fireEvent.click(
     screen.getByRole('button', { name: '홍길동 결석 기록 수정' }),
   );
-  const dialog = screen.getByRole('dialog', { name: '홍길동 결석 기록 수정' });
+  const dialog = screen.getByRole<HTMLDialogElement>('dialog', {
+    name: '홍길동 결석 기록 수정',
+  });
 
   expect(
     within(dialog)
@@ -155,6 +169,7 @@ test('teacher sees scheduled dates newest first, corrects absence, and closes wi
     dialog,
     new Event('cancel', { bubbles: true, cancelable: true }),
   );
+  expect(dialog.open).toBe(false);
   expect(
     screen.queryByRole('dialog', { name: '홍길동 결석 기록 수정' }),
   ).not.toBeInTheDocument();

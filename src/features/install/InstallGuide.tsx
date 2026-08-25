@@ -1,7 +1,7 @@
 export function InstallGuide() {
   return (
     <details className="mt-4 w-full rounded-md border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-sm">
-      <summary className="cursor-pointer font-semibold text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500">
+      <summary className="min-h-10 cursor-pointer py-2 font-semibold text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500">
         앱처럼 홈 화면에 설치하기
       </summary>
       <div className="mt-4 space-y-4">

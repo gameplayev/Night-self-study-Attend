@@ -55,7 +55,25 @@ test('shows teacher login fields as name first, then identifier', async () => {
   render(<App />);
   expect(await screen.findByText('학생 확인')).toBeInTheDocument();
 
+  expect(screen.getByRole('button', { name: '학생' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  expect(screen.getByRole('button', { name: '선생님' })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  );
+
   fireEvent.click(screen.getByText('선생님'));
+
+  expect(screen.getByRole('button', { name: '학생' })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  );
+  expect(screen.getByRole('button', { name: '선생님' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
 
   const visibleLabels = Array.from(document.querySelectorAll('label span')).map(
     (label) => label.textContent,

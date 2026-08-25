@@ -88,7 +88,7 @@ export function LoginView({
   );
 
   return (
-    <main className="flex min-h-[100dvh] items-center justify-center bg-slate-100 px-4 py-4 text-slate-900">
+    <main className="flex min-h-[100dvh] items-center justify-center bg-slate-100 pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-[max(1rem,env(safe-area-inset-top))] text-slate-900">
       <div className="w-full max-w-md">
         <section className="rounded-md border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-center gap-3">
@@ -108,6 +108,7 @@ export function LoginView({
             <button
               type="button"
               onClick={() => handleRoleChange('student')}
+              aria-pressed={role === 'student'}
               className={`h-10 rounded text-sm font-semibold transition ${
                 role === 'student'
                   ? 'bg-slate-900 text-white'
@@ -119,6 +120,7 @@ export function LoginView({
             <button
               type="button"
               onClick={() => handleRoleChange('teacher')}
+              aria-pressed={role === 'teacher'}
               className={`h-10 rounded text-sm font-semibold transition ${
                 role === 'teacher'
                   ? 'bg-slate-900 text-white'
