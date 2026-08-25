@@ -88,3 +88,74 @@ test('teacher corrects the dated record behind a student absence total', () => {
     '2026-08-03',
   );
 });
+
+test('teacher sees scheduled dates newest first, corrects absence, and closes with Escape', () => {
+  const onManualAttendance = jest.fn().mockResolvedValue(undefined);
+  const correctionRecords: AttendanceRecord[] = [
+    ...records,
+    {
+      id: 'wednesday-present',
+      studentNumber: '10101',
+      studentName: '홍길동',
+      action: 'present',
+      timestamp: '2026-08-05T12:00:00.000Z',
+      deviceId: 'teacher',
+      deviceLabel: '교사 처리',
+    },
+    {
+      id: 'saturday-absence',
+      studentNumber: '10101',
+      studentName: '홍길동',
+      action: 'absent',
+      timestamp: '2026-08-08T12:00:00.000Z',
+      deviceId: 'teacher',
+      deviceLabel: '교사 처리',
+    },
+  ];
+
+  render(
+    <TeacherView
+      teachers={teachers}
+      students={students}
+      records={correctionRecords}
+      onAddTeacher={jest.fn()}
+      onAddStudent={jest.fn()}
+      onDeleteStudent={jest.fn()}
+      onManualAttendance={onManualAttendance}
+      onDeleteAttendanceDate={jest.fn()}
+      onDeleteAllAttendanceRecords={jest.fn()}
+      onResetDevices={jest.fn()}
+      onUpdateStudent={jest.fn()}
+      onUpdateTeacher={jest.fn()}
+      message={null}
+    />,
+  );
+
+  fireEvent.click(
+    screen.getByRole('button', { name: '홍길동 결석 기록 수정' }),
+  );
+  const dialog = screen.getByRole('dialog', { name: '홍길동 결석 기록 수정' });
+
+  expect(
+    within(dialog)
+      .getAllByText(/^2026-08-\d{2}$/)
+      .map((date) => date.textContent),
+  ).toEqual(['2026-08-05', '2026-08-03']);
+
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: '2026-08-03 결석으로 수정' }),
+  );
+  expect(onManualAttendance).toHaveBeenCalledWith(
+    students[0],
+    'absent',
+    '2026-08-03',
+  );
+
+  fireEvent(
+    dialog,
+    new Event('cancel', { bubbles: true, cancelable: true }),
+  );
+  expect(
+    screen.queryByRole('dialog', { name: '홍길동 결석 기록 수정' }),
+  ).not.toBeInTheDocument();
+});
