@@ -7,9 +7,11 @@ export const metadata: Metadata = {
   description: '학생과 교사가 함께 쓰는 야간자율학습 출석 관리 앱',
   icons: {
     icon: [
+      { url: '/favicon.png', sizes: '64x64', type: 'image/png' },
       { url: '/logo192.png', sizes: '192x192', type: 'image/png' },
       { url: '/logo512.png', sizes: '512x512', type: 'image/png' },
     ],
+    shortcut: [{ url: '/favicon.png', sizes: '64x64', type: 'image/png' }],
     apple: [
       { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
     ],
