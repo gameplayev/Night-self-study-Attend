@@ -1,7 +1,5 @@
-import { StudentAccess } from '../../services/appService';
+import type { StudentAccess } from '../../services/appService';
 
 export interface PendingRegistration {
-  studentNumber: string;
-  name: string;
-  access: StudentAccess;
+  readonly access: StudentAccess;
 }

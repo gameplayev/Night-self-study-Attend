@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { DeviceIdentity } from '../../services/deviceService';
 import { PendingRegistration } from './types';
+import type { StudentCredentials } from '../../services/appService';
 import { normalizeStudentNumberInput } from '../../lib/students';
 import { InstallGuide } from '../install/InstallGuide';
 
@@ -17,8 +18,8 @@ export function LoginView({
   device: DeviceIdentity | null;
   pendingRegistration: PendingRegistration | null;
   onTeacherLogin: (identifier: string, displayName: string) => Promise<void>;
-  onStudentCheck: (studentNumber: string, name: string) => Promise<void>;
-  onRegisterDevice: () => Promise<void>;
+  onStudentCheck: (credentials: StudentCredentials) => Promise<void>;
+  onRegisterDevice: (credentials: StudentCredentials) => Promise<void>;
   onClearRegistration: () => void;
   isBusy: boolean;
   error: string | null;
@@ -27,6 +28,7 @@ export function LoginView({
   const [role, setRole] = useState<'student' | 'teacher'>('student');
   const [identifier, setIdentifier] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [pin, setPin] = useState('');
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -34,7 +36,11 @@ export function LoginView({
       await onTeacherLogin(identifier, displayName);
       return;
     }
-    await onStudentCheck(identifier, displayName);
+    await onStudentCheck({
+      studentNumber: identifier,
+      name: displayName,
+      pin,
+    });
   }
 
   // 역할을 바꾸면 학생 기기 등록 안내도 더 이상 유효하지 않으므로 함께 초기화한다.
@@ -43,6 +49,7 @@ export function LoginView({
     if (nextRole === 'student') {
       setIdentifier((value) => normalizeStudentNumberInput(value));
     }
+    setPin('');
     onClearRegistration();
   }
 
@@ -63,6 +70,7 @@ export function LoginView({
           onClearRegistration();
         }}
         inputMode={role === 'student' ? 'numeric' : undefined}
+        required
         maxLength={role === 'student' ? 5 : undefined}
         pattern={role === 'student' ? '[0-9]{5}' : undefined}
         autoComplete={role === 'teacher' ? 'current-password' : 'username'}
@@ -82,6 +90,30 @@ export function LoginView({
           setDisplayName(event.target.value);
           onClearRegistration();
         }}
+        required
+        className="h-12 w-full rounded-md border border-slate-300 px-4 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+      />
+    </label>
+  );
+
+  const pinField = (
+    <label className="block">
+      <span className="mb-2 block text-sm font-medium text-slate-700">
+        PIN 4자리
+      </span>
+      <input
+        type="password"
+        value={pin}
+        onChange={(event) => {
+          setPin(event.target.value.replace(/[^0-9]/g, '').slice(0, 4));
+          onClearRegistration();
+        }}
+        inputMode="numeric"
+        required
+        minLength={4}
+        maxLength={4}
+        pattern="[0-9]{4}"
+        autoComplete="current-password"
         className="h-12 w-full rounded-md border border-slate-300 px-4 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
       />
     </label>
@@ -140,6 +172,7 @@ export function LoginView({
             <>
               {identifierField}
               {nameField}
+              {pinField}
             </>
           )}
           <button
@@ -161,7 +194,13 @@ export function LoginView({
             </p>
             <button
               type="button"
-              onClick={() => void onRegisterDevice()}
+              onClick={() =>
+                void onRegisterDevice({
+                  studentNumber: identifier,
+                  name: displayName,
+                  pin,
+                })
+              }
               disabled={isBusy}
               className="mt-4 h-10 w-full rounded-md bg-sky-700 px-4 text-sm font-semibold text-white transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-60"
             >

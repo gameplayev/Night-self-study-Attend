@@ -81,6 +81,121 @@ test('shows teacher login fields as name first, then identifier', async () => {
   expect(visibleLabels).toEqual(['이름', '선생님 고유 번호']);
 });
 
+test('student login requires a four-digit PIN and sends it to the access API', async () => {
+  let accessBody: BodyInit | null | undefined;
+  jest.spyOn(window, 'fetch').mockImplementation((input, init) => {
+    if (input === '/api/device') {
+      return jsonResponse({ id: 'device', label: '브라우저 기기' });
+    }
+    if (input === '/api/session') {
+      return Promise.resolve(new Response(null, { status: 204 }));
+    }
+    if (input === '/api/students/access') {
+      accessBody = init?.body;
+      return jsonResponse({
+        status: 'device_owned_by_other',
+        studentNumber: '20101',
+        studentName: '김민준',
+        registeredCount: 0,
+        maxDevices: 2,
+        deviceLabel: '브라우저 기기',
+        session: null,
+      });
+    }
+    throw new Error(`Unexpected request: ${String(input)}`);
+  });
+
+  render(<App />);
+  expect(await screen.findByText('학생 확인')).toBeInTheDocument();
+
+  fireEvent.change(screen.getByLabelText('학번'), {
+    target: { value: '20101' },
+  });
+  fireEvent.change(screen.getByLabelText('이름'), {
+    target: { value: '김민준' },
+  });
+  fireEvent.change(screen.getByLabelText('PIN 4자리'), {
+    target: { value: '1234' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: '학생 확인' }));
+
+  await waitFor(() => {
+    expect(accessBody).toBe(
+      JSON.stringify({
+        studentNumber: '20101',
+        name: '김민준',
+        pin: '1234',
+        deviceLabel: '브라우저 기기',
+      }),
+    );
+  });
+});
+
+test('student device registration sends the locally entered four-digit PIN', async () => {
+  let registrationBody: BodyInit | null | undefined;
+  jest.spyOn(window, 'fetch').mockImplementation((input, init) => {
+    if (input === '/api/device') {
+      return jsonResponse({ id: 'device', label: '브라우저 기기' });
+    }
+    if (input === '/api/session') {
+      return Promise.resolve(new Response(null, { status: 204 }));
+    }
+    if (input === '/api/students/access') {
+      return jsonResponse({
+        status: 'registration_required',
+        studentNumber: '20101',
+        studentName: '김민준',
+        registeredCount: 0,
+        maxDevices: 2,
+        deviceLabel: '브라우저 기기',
+        session: null,
+      });
+    }
+    if (input === '/api/students/register-device') {
+      registrationBody = init?.body;
+      return jsonResponse({
+        user: {
+          id: 1,
+          username: '20101',
+          displayName: '김민준',
+          role: 'student',
+          studentNumber: '20101',
+        },
+        expiresAt: '2099-01-01T00:00:00.000Z',
+        csrfToken: 'csrf-token',
+      });
+    }
+    throw new Error(`Unexpected request: ${String(input)}`);
+  });
+
+  render(<App />);
+  expect(await screen.findByText('학생 확인')).toBeInTheDocument();
+
+  fireEvent.change(screen.getByLabelText('학번'), {
+    target: { value: '20101' },
+  });
+  fireEvent.change(screen.getByLabelText('이름'), {
+    target: { value: '김민준' },
+  });
+  fireEvent.change(screen.getByLabelText('PIN 4자리'), {
+    target: { value: '0123' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: '학생 확인' }));
+
+  fireEvent.click(await screen.findByRole('button', { name: '이 기기 등록하기' }));
+
+  await waitFor(() => {
+    expect(registrationBody).toBe(
+      JSON.stringify({
+        studentNumber: '20101',
+        name: '김민준',
+        pin: '0123',
+        deviceLabel: '브라우저 기기',
+      }),
+    );
+  });
+});
+
 test('teacher edits one student attendance weekdays and absence total updates', async () => {
   let updateBody: BodyInit | null | undefined;
   let globalSettingsRequested = false;
@@ -251,8 +366,12 @@ test('teacher switches roster editing to the second student', async () => {
   expect(secondStudentRow).not.toBeNull();
   if (!firstStudentRow || !secondStudentRow) return;
 
+  expect(screen.queryByRole('columnheader', { name: 'PIN' })).not.toBeInTheDocument();
   fireEvent.click(within(firstStudentRow).getByRole('button', { name: '수정' }));
   expect(within(firstStudentRow).getByRole('button', { name: '저장' })).toBeVisible();
+  expect(
+    within(firstStudentRow).getByPlaceholderText('PIN 재설정 (선택)'),
+  ).toBeVisible();
 
   fireEvent.click(within(secondStudentRow).getByRole('button', { name: '수정' }));
 

@@ -86,6 +86,7 @@ test('student creation sends the expected payload with csrf token', async () => 
       studentNumber: '20999',
       name: '김수정',
       seatNumber: 14,
+      pin: '4821',
     },
     'csrf-token',
   );
@@ -97,6 +98,7 @@ test('student creation sends the expected payload with csrf token', async () => 
       studentNumber: '20999',
       name: '김수정',
       seatNumber: 14,
+      pin: '4821',
     }),
   );
 });
@@ -116,15 +118,16 @@ test('student device registration sends student identity and device label', asyn
     }),
   );
 
-  await registerStudentDevice('20101', '김민준', {
-    id: 'device',
-    label: '브라우저 기기',
-  });
+  await registerStudentDevice(
+    { studentNumber: '20101', name: '김민준', pin: '4821' },
+    { id: 'device', label: '브라우저 기기' },
+  );
 
   expect(fetchSpy.mock.calls[0][1]?.body).toBe(
     JSON.stringify({
       studentNumber: '20101',
       name: '김민준',
+      pin: '4821',
       deviceLabel: '브라우저 기기',
     }),
   );

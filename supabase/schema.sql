@@ -25,7 +25,8 @@ create table if not exists public.browser_devices (
   label text not null,
   student_id bigint references public.students(id) on delete cascade,
   created_at timestamptz not null,
-  last_seen_at timestamptz not null
+  last_seen_at timestamptz not null,
+  expires_at timestamptz not null default (clock_timestamp() + interval '90 days')
 );
 
 create table if not exists public.attendance_records (
@@ -79,6 +80,23 @@ alter table public.attendance_records
 alter table public.attendance_records
   add column if not exists recorded_sequence bigint generated always as identity;
 
+alter table public.browser_devices
+  add column if not exists expires_at timestamptz;
+
+update public.browser_devices
+set expires_at = created_at + interval '90 days'
+where expires_at is null;
+
+alter table public.browser_devices
+  alter column expires_at set default (clock_timestamp() + interval '90 days'),
+  alter column expires_at set not null;
+
+alter table public.browser_devices
+  drop constraint if exists browser_devices_expiry_check;
+
+alter table public.browser_devices
+  add constraint browser_devices_expiry_check check (expires_at > created_at);
+
 create table if not exists public.web_sessions (
   token_hash text primary key,
   csrf_token_hash text not null,
@@ -86,8 +104,420 @@ create table if not exists public.web_sessions (
   expires_at timestamptz not null
 );
 
+create table if not exists public.auth_login_attempts (
+  key_hash text primary key check (key_hash ~ '^[0-9a-f]{64}$'),
+  user_id bigint references public.users(id) on delete cascade,
+  attempt_count integer not null check (attempt_count > 0),
+  window_started_at timestamptz not null
+);
+
+create index if not exists idx_login_attempts_window
+  on public.auth_login_attempts(window_started_at);
+
+create or replace function public.consume_login_attempt(
+  p_key_hash text,
+  p_user_id bigint,
+  p_limit integer,
+  p_window_seconds integer
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  v_now timestamptz := clock_timestamp();
+  v_count integer;
+  v_started_at timestamptz;
+  v_retry_after integer;
+begin
+  if p_key_hash !~ '^[0-9a-f]{64}$' or p_limit < 1 or p_window_seconds < 1 then
+    raise exception 'invalid login limit configuration' using errcode = '22023';
+  end if;
+
+  if p_user_id is not null
+     and not exists (select 1 from public.users where id = p_user_id) then
+    p_user_id := null;
+  end if;
+
+  delete from public.auth_login_attempts
+  where window_started_at <= v_now - make_interval(secs => p_window_seconds);
+
+  insert into public.auth_login_attempts as attempts (
+    key_hash,
+    user_id,
+    attempt_count,
+    window_started_at
+  ) values (
+    p_key_hash,
+    p_user_id,
+    1,
+    v_now
+  )
+  on conflict (key_hash) do update
+  set
+    user_id = coalesce(excluded.user_id, attempts.user_id),
+    attempt_count = case
+      when attempts.window_started_at <= v_now - make_interval(secs => p_window_seconds)
+        then 1
+      else attempts.attempt_count + 1
+    end,
+    window_started_at = case
+      when attempts.window_started_at <= v_now - make_interval(secs => p_window_seconds)
+        then v_now
+      else attempts.window_started_at
+    end
+  returning attempt_count, window_started_at into v_count, v_started_at;
+
+  v_retry_after := greatest(
+    0,
+    ceil(extract(epoch from (
+      v_started_at + make_interval(secs => p_window_seconds) - v_now
+    )))::integer
+  );
+
+  return jsonb_build_object(
+    'allowed', v_count <= p_limit,
+    'retry_after_seconds', v_retry_after
+  );
+end;
+$$;
+
+create or replace function public.clear_login_attempt(p_key_hash text)
+returns boolean
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+begin
+  delete from public.auth_login_attempts where key_hash = p_key_hash;
+  return true;
+end;
+$$;
+
+create or replace function public.claim_student_device(
+  p_device_id uuid,
+  p_token_hash text,
+  p_label text,
+  p_student_id bigint,
+  p_max_devices integer
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  v_now timestamptz := clock_timestamp();
+  v_existing_id uuid;
+  v_existing_owner bigint;
+  v_registered_count bigint;
+begin
+  if p_max_devices < 1 or length(p_token_hash) <> 64 or length(p_label) > 240 then
+    raise exception 'invalid device claim input' using errcode = '22023';
+  end if;
+
+  perform 1 from public.students where id = p_student_id for update;
+  if not found then
+    return jsonb_build_object('status', 'student_not_found');
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended(p_token_hash, 0));
+
+  delete from public.browser_devices
+  where token_hash = p_token_hash and expires_at <= v_now;
+
+  select id, student_id
+  into v_existing_id, v_existing_owner
+  from public.browser_devices
+  where token_hash = p_token_hash
+  for update;
+
+  if v_existing_id is not null and v_existing_owner is not null
+     and v_existing_owner <> p_student_id then
+    return jsonb_build_object('status', 'device_owned_by_other');
+  end if;
+
+  if v_existing_id is not null and v_existing_owner = p_student_id then
+    update public.browser_devices
+    set label = p_label, last_seen_at = v_now
+    where id = v_existing_id;
+    select count(*) into v_registered_count
+    from public.browser_devices
+    where student_id = p_student_id and expires_at > v_now;
+    return jsonb_build_object(
+      'status', 'claimed',
+      'device_id', v_existing_id,
+      'registered_count', v_registered_count
+    );
+  end if;
+
+  select count(*) into v_registered_count
+  from public.browser_devices
+  where student_id = p_student_id and expires_at > v_now;
+
+  if v_registered_count >= p_max_devices then
+    return jsonb_build_object(
+      'status', 'device_limit_reached',
+      'registered_count', v_registered_count
+    );
+  end if;
+
+  if v_existing_id is null then
+    insert into public.browser_devices (
+      id,
+      token_hash,
+      label,
+      student_id,
+      created_at,
+      last_seen_at,
+      expires_at
+    ) values (
+      p_device_id,
+      p_token_hash,
+      p_label,
+      p_student_id,
+      v_now,
+      v_now,
+      v_now + interval '90 days'
+    )
+    returning id into v_existing_id;
+  else
+    update public.browser_devices
+    set
+      label = p_label,
+      student_id = p_student_id,
+      last_seen_at = v_now,
+      expires_at = v_now + interval '90 days'
+    where id = v_existing_id;
+  end if;
+
+  return jsonb_build_object(
+    'status', 'claimed',
+    'device_id', v_existing_id,
+    'registered_count', v_registered_count + 1
+  );
+end;
+$$;
+
+drop function if exists public.rotate_student_pin(bigint, text);
+
+create or replace function public.update_student_profile(
+  p_student_id bigint,
+  p_student_number text,
+  p_name text,
+  p_grade integer,
+  p_class_number integer,
+  p_seat_number integer,
+  p_attendance_weekdays integer[],
+  p_password_hash text
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  v_user_id bigint;
+  v_credentials_changed boolean;
+begin
+  select
+    users.id,
+    students.student_number is distinct from p_student_number
+      or students.name is distinct from p_name
+      or p_password_hash is not null
+  into v_user_id, v_credentials_changed
+  from public.students
+  join public.users
+    on users.student_id = students.id and users.role = 'student'
+  where students.id = p_student_id
+  for update of students, users;
+  if not found then return false; end if;
+
+  update public.students
+  set
+    student_number = p_student_number,
+    name = p_name,
+    grade = p_grade,
+    class_number = p_class_number,
+    seat_number = p_seat_number,
+    attendance_weekdays = p_attendance_weekdays
+  where id = p_student_id;
+
+  update public.users
+  set
+    username = p_student_number,
+    display_name = p_name,
+    password_hash = coalesce(p_password_hash, password_hash)
+  where id = v_user_id;
+
+  if v_credentials_changed then
+    delete from public.web_sessions where user_id = v_user_id;
+    delete from public.auth_login_attempts where user_id = v_user_id;
+  end if;
+  return true;
+end;
+$$;
+
+create or replace function public.reset_student_access(p_student_id bigint)
+returns boolean
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  v_user_id bigint;
+begin
+  perform 1 from public.students where id = p_student_id for update;
+  if not found then return false; end if;
+
+  select id into v_user_id
+  from public.users
+  where student_id = p_student_id and role = 'student'
+  for update;
+  if v_user_id is null then return false; end if;
+
+  delete from public.browser_devices where student_id = p_student_id;
+  delete from public.web_sessions where user_id = v_user_id;
+  delete from public.auth_login_attempts where user_id = v_user_id;
+  return true;
+end;
+$$;
+
+drop function if exists public.rotate_teacher_secret(bigint, text, text);
+
+create or replace function public.update_teacher_account(
+  p_teacher_id bigint,
+  p_display_name text,
+  p_password_hash text
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  v_credentials_changed boolean;
+begin
+  select display_name is distinct from p_display_name or p_password_hash is not null
+  into v_credentials_changed
+  from public.users
+  where id = p_teacher_id and role = 'teacher'
+  for update;
+  if not found then return false; end if;
+
+  update public.users
+  set
+    display_name = p_display_name,
+    password_hash = coalesce(p_password_hash, password_hash)
+  where id = p_teacher_id and role = 'teacher';
+
+  if v_credentials_changed then
+    delete from public.web_sessions where user_id = p_teacher_id;
+    delete from public.auth_login_attempts where user_id = p_teacher_id;
+  end if;
+  return true;
+end;
+$$;
+
+create or replace function public.record_self_attendance(
+  p_student_id bigint,
+  p_device_id uuid,
+  p_device_token_hash text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  v_now timestamptz := clock_timestamp();
+  v_date date := (v_now at time zone 'Asia/Seoul')::date;
+  v_start timestamptz;
+  v_end timestamptz;
+  v_latest_action text;
+  v_latest_timestamp timestamptz;
+  v_action text;
+  v_device_label text;
+  v_id uuid := gen_random_uuid();
+  v_sequence bigint;
+begin
+  perform 1 from public.students where id = p_student_id for update;
+  if not found then
+    return jsonb_build_object('status', 'student_not_found');
+  end if;
+
+  select label
+  into v_device_label
+  from public.browser_devices
+  where id = p_device_id
+    and token_hash = p_device_token_hash
+    and student_id = p_student_id
+    and expires_at > v_now
+  for update;
+  if not found then
+    return jsonb_build_object('status', 'device_invalid');
+  end if;
+
+  v_start := v_date::timestamp at time zone 'Asia/Seoul';
+  v_end := (v_date + 1)::timestamp at time zone 'Asia/Seoul';
+
+  select action, "timestamp"
+  into v_latest_action, v_latest_timestamp
+  from public.attendance_records
+  where student_id = p_student_id
+    and "timestamp" >= v_start
+    and "timestamp" < v_end
+  order by "timestamp" desc, recorded_sequence desc
+  limit 1;
+
+  if v_latest_action = 'check_out' then
+    return jsonb_build_object('status', 'closed');
+  end if;
+  if v_latest_timestamp is not null
+     and v_latest_timestamp > v_now - interval '30 seconds' then
+    return jsonb_build_object('status', 'too_soon');
+  end if;
+
+  v_action := case
+    when v_latest_action in ('check_in', 'present') then 'check_out'
+    else 'check_in'
+  end;
+
+  insert into public.attendance_records (
+    id,
+    student_id,
+    action,
+    "timestamp",
+    device_id,
+    device_label
+  ) values (
+    v_id,
+    p_student_id,
+    v_action,
+    v_now,
+    p_device_id::text,
+    v_device_label
+  )
+  returning recorded_sequence into v_sequence;
+
+  return jsonb_build_object(
+    'status', 'created',
+    'id', v_id,
+    'action', v_action,
+    'timestamp', v_now,
+    'recorded_sequence', v_sequence,
+    'device_id', p_device_id::text,
+    'device_label', v_device_label
+  );
+end;
+$$;
+
 create index if not exists idx_devices_student
   on public.browser_devices(student_id);
+
+create index if not exists idx_devices_active_student
+  on public.browser_devices(student_id, expires_at);
 
 drop index if exists public.idx_attendance_student_time;
 
@@ -105,5 +535,23 @@ alter table public.users enable row level security;
 alter table public.browser_devices enable row level security;
 alter table public.attendance_records enable row level security;
 alter table public.web_sessions enable row level security;
+alter table public.auth_login_attempts enable row level security;
+
+revoke all on table public.auth_login_attempts from public, anon, authenticated;
+revoke all on function public.consume_login_attempt(text, bigint, integer, integer) from public, anon, authenticated;
+revoke all on function public.clear_login_attempt(text) from public, anon, authenticated;
+revoke all on function public.claim_student_device(uuid, text, text, bigint, integer) from public, anon, authenticated;
+revoke all on function public.update_student_profile(bigint, text, text, integer, integer, integer, integer[], text) from public, anon, authenticated;
+revoke all on function public.reset_student_access(bigint) from public, anon, authenticated;
+revoke all on function public.update_teacher_account(bigint, text, text) from public, anon, authenticated;
+revoke all on function public.record_self_attendance(bigint, uuid, text) from public, anon, authenticated;
+
+grant execute on function public.consume_login_attempt(text, bigint, integer, integer) to service_role;
+grant execute on function public.clear_login_attempt(text) to service_role;
+grant execute on function public.claim_student_device(uuid, text, text, bigint, integer) to service_role;
+grant execute on function public.update_student_profile(bigint, text, text, integer, integer, integer, integer[], text) to service_role;
+grant execute on function public.reset_student_access(bigint) to service_role;
+grant execute on function public.update_teacher_account(bigint, text, text) to service_role;
+grant execute on function public.record_self_attendance(bigint, uuid, text) to service_role;
 
 notify pgrst, 'reload schema';

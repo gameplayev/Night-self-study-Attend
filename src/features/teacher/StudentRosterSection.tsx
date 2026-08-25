@@ -54,6 +54,7 @@ export function StudentRosterSection({
       studentNumber: student.studentNumber,
       name: student.name,
       seatNumber: String(student.seatNumber),
+      newPin: '',
       attendanceWeekdays: [...student.attendanceWeekdays],
     });
   }

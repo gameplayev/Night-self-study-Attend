@@ -36,10 +36,17 @@ export interface StudentAccess {
   session: AuthSession | null;
 }
 
+export interface StudentCredentials {
+  studentNumber: string;
+  name: string;
+  pin: string;
+}
+
 export interface CreateStudentInput {
   studentNumber: string;
   name: string;
   seatNumber: number;
+  pin: string;
 }
 
 export interface UpdateStudentInput {
@@ -47,6 +54,7 @@ export interface UpdateStudentInput {
   name: string;
   seatNumber: number;
   attendanceWeekdays: readonly AttendanceWeekday[];
+  newPin?: string;
 }
 
 export interface Teacher {
@@ -123,30 +131,26 @@ export async function teacherLogin(identifier: string, displayName: string) {
 }
 
 export async function checkStudentAccess(
-  studentNumber: string,
-  name: string,
+  credentials: StudentCredentials,
   device: DeviceIdentity,
 ) {
   return apiRequest<StudentAccess>('/api/students/access', {
     method: 'POST',
     body: JSON.stringify({
-      studentNumber,
-      name,
+      ...credentials,
       deviceLabel: device.label,
     }),
   });
 }
 
 export async function registerStudentDevice(
-  studentNumber: string,
-  name: string,
+  credentials: StudentCredentials,
   device: DeviceIdentity,
 ) {
   return apiRequest<AuthSession>('/api/students/register-device', {
     method: 'POST',
     body: JSON.stringify({
-      studentNumber,
-      name,
+      ...credentials,
       deviceLabel: device.label,
     }),
   });

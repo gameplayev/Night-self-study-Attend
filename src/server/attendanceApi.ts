@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import {
+  DUMMY_SECRET_HASH,
+  findSecretMatch,
   hashSecret,
   isLegacySha256Hash,
   randomToken,
@@ -18,7 +20,6 @@ import type { AttendanceWeekday } from '../lib/attendance';
 
 type UserRole = 'student' | 'teacher';
 type AttendanceAction = 'check_in' | 'check_out' | 'absent' | 'present';
-type DailyPresence = null | 'present' | 'checked_out';
 
 interface ApiError extends Error {
   statusCode?: number;
@@ -70,6 +71,7 @@ interface StudentRow {
 interface StudentAccountRow extends AuthUserRow {
   student_id: number;
   name: string;
+  password_hash: string;
 }
 
 interface BrowserDeviceRow {
@@ -77,6 +79,7 @@ interface BrowserDeviceRow {
   token_hash: string;
   label: string;
   student_id: number | null;
+  expires_at: string;
 }
 
 interface WebSessionRow {
@@ -98,8 +101,11 @@ interface AttendanceRecordRow {
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const SESSION_SECONDS = 60 * 60;
-const DEVICE_SECONDS = 60 * 60 * 24 * 365;
+const DEVICE_SECONDS = 60 * 60 * 24 * 90;
 const MAX_DEVICES_PER_STUDENT = 2;
+const MAX_JSON_BYTES = 16 * 1024;
+const LOGIN_ATTEMPT_LIMIT = 5;
+const LOGIN_WINDOW_SECONDS = 15 * 60;
 const SCHOOL = {
   latitude: 37.2537794,
   longitude: 126.9824637,
@@ -112,9 +118,6 @@ const SESSION_COOKIE = IS_PRODUCTION
 const DEVICE_COOKIE = IS_PRODUCTION
   ? '__Host-attend_device'
   : 'attend_device';
-const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
-const RATE_LIMIT_MAX_ATTEMPTS = 8;
-const rateLimits = new Map<string, { count: number; resetAt: number }>();
 let bootstrapPromise: Promise<void> | null = null;
 
 function nowIso() {
@@ -237,45 +240,50 @@ function failFromDatabase(error: unknown, message = '데이터베이스 요청�
   fail(message, 500);
 }
 
-function requestIp(req: NextRequest) {
-  const forwarded = req.headers.get('x-forwarded-for');
-  if (forwarded?.trim()) {
-    return forwarded.split(',')[0].trim();
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value != null && !Array.isArray(value);
+}
+
+async function readJson(req: NextRequest): Promise<Record<string, unknown>> {
+  const declaredLength = Number(req.headers.get('content-length'));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_JSON_BYTES) {
+    fail('요청 본문이 너무 큽니다.', 413);
   }
-  return req.headers.get('x-real-ip') || 'unknown';
-}
-
-function rateLimitKey(req: NextRequest, bucket: string, subject = '') {
-  return `${bucket}:${requestIp(req)}:${subject}`;
-}
-
-function checkRateLimit(req: NextRequest, bucket: string, subject = '') {
-  const key = rateLimitKey(req, bucket, subject);
-  const now = Date.now();
-  const existing = rateLimits.get(key);
-  if (!existing || existing.resetAt <= now) {
-    rateLimits.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return;
+  if (!req.body) return {};
+  if (
+    req.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase() !==
+    'application/json'
+  ) {
+    fail('JSON 형식의 요청만 사용할 수 있습니다.', 415);
   }
-  existing.count += 1;
-  if (existing.count > RATE_LIMIT_MAX_ATTEMPTS) {
-    const seconds = Math.ceil((existing.resetAt - now) / 1000);
-    fail(`잠시 후 다시 시도해 주세요. (${seconds}초 후 가능)`, 429);
+
+  const reader = req.body.getReader();
+  const decoder = new TextDecoder();
+  let receivedBytes = 0;
+  let body = '';
+  while (true) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    receivedBytes += chunk.value.byteLength;
+    if (receivedBytes > MAX_JSON_BYTES) {
+      await reader.cancel();
+      fail('요청 본문이 너무 큽니다.', 413);
+    }
+    body += decoder.decode(chunk.value, { stream: true });
   }
-}
-
-function clearRateLimit(req: NextRequest, bucket: string, subject = '') {
-  rateLimits.delete(rateLimitKey(req, bucket, subject));
-}
-
-async function readJson(req: NextRequest) {
-  const body = await req.text();
-  if (!body.trim()) return {} as Record<string, unknown>;
+  body += decoder.decode();
+  if (!body.trim()) return {};
+  let value: unknown;
   try {
-    return JSON.parse(body) as Record<string, unknown>;
-  } catch {
-    fail('요청 본문이 올바르지 않습니다.', 400);
+    value = JSON.parse(body);
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      fail('요청 본문이 올바르지 않습니다.', 400);
+    }
+    throw error;
   }
+  if (!isRecord(value)) fail('요청 본문이 올바르지 않습니다.', 400);
+  return value;
 }
 
 function assertString(value: unknown, message: string) {
@@ -283,6 +291,12 @@ function assertString(value: unknown, message: string) {
     fail(message, 400);
   }
   return value.trim();
+}
+
+function assertPersonName(value: unknown) {
+  const name = assertString(value, '이름을 입력해 주세요.');
+  if (name.length > 80) fail('이름은 80자 이하로 입력해 주세요.', 400);
+  return name;
 }
 
 function assertInteger(value: unknown, message: string) {
@@ -307,6 +321,29 @@ function assertStudentNumber(value: unknown) {
     fail('학번은 5자리 숫자로 입력해 주세요.', 400);
   }
   return studentNumber;
+}
+
+function assertStudentPin(value: unknown) {
+  if (typeof value !== 'string' || !/^[0-9]{4}$/.test(value)) {
+    fail('PIN은 숫자 4자리로 입력해 주세요.', 400);
+  }
+  return value;
+}
+
+function assertNewTeacherIdentifier(value: unknown) {
+  const identifier = assertString(value, '고유 번호를 입력해 주세요.');
+  if (identifier.length < 8 || identifier.length > 128) {
+    fail('고유 번호는 8~128자로 입력해 주세요.', 400);
+  }
+  return identifier;
+}
+
+function assertTeacherIdentifier(value: unknown) {
+  const identifier = assertString(value, '고유 번호를 입력해 주세요.');
+  if (identifier.length > 128) {
+    fail('고유 번호는 128자 이하로 입력해 주세요.', 400);
+  }
+  return identifier;
 }
 
 function parseStudentClassOrFail(studentNumber: string) {
@@ -396,7 +433,7 @@ async function seedInitialData() {
     if (!identifier || !name) return;
     const { error: teacherError } = await supabase.from('users').insert({
       username: 'teacher:bootstrap',
-      password_hash: hashSecret(identifier),
+      password_hash: await hashSecret(identifier),
       display_name: name,
       role: 'teacher',
     });
@@ -406,7 +443,7 @@ async function seedInitialData() {
 
   const { error: teacherError } = await supabase.from('users').insert({
     username: 'teacher:1',
-    password_hash: hashSecret('teacher01'),
+    password_hash: await hashSecret('teacher01'),
     display_name: '담당 교사',
     role: 'teacher',
   });
@@ -603,70 +640,58 @@ function browserDeviceLabel(req: NextRequest, fallbackLabel: unknown) {
   ).slice(0, 240);
 }
 
-async function ensureBrowserDevice(
+function deviceIdFromTokenHash(tokenHash: string) {
+  return `${tokenHash.slice(0, 8)}-${tokenHash.slice(8, 12)}-${tokenHash.slice(12, 16)}-${tokenHash.slice(16, 20)}-${tokenHash.slice(20, 32)}`;
+}
+
+async function browserDevice(
   req: NextRequest,
   state: ApiState,
   label: unknown,
 ) {
   const supabase = getSupabase();
-  const rawToken = req.cookies.get(DEVICE_COOKIE)?.value;
-  const tokenHash = rawToken ? sha256Hex(rawToken) : null;
+  const existingRawToken = req.cookies.get(DEVICE_COOKIE)?.value;
+  const rawToken = existingRawToken || randomToken();
+  const tokenHash = sha256Hex(rawToken);
   const nextLabel = browserDeviceLabel(req, label);
 
-  if (tokenHash) {
-    const { data: existing, error } = await supabase
+  const { data: existing, error } = await supabase
+    .from('browser_devices')
+    .select('id, token_hash, label, student_id, expires_at')
+    .eq('token_hash', tokenHash)
+    .gt('expires_at', nowIso())
+    .maybeSingle<BrowserDeviceRow>();
+  if (error) failFromDatabase(error);
+  if (existing) {
+    const { error: updateError } = await supabase
       .from('browser_devices')
-      .select('id, token_hash, label, student_id')
-      .eq('token_hash', tokenHash)
-      .maybeSingle<BrowserDeviceRow>();
-    if (error) failFromDatabase(error);
-    if (existing) {
-      const { error: updateError } = await supabase
-        .from('browser_devices')
-        .update({ label: nextLabel, last_seen_at: nowIso() })
-        .eq('id', existing.id);
-      if (updateError) failFromDatabase(updateError);
-      return {
-        id: existing.id,
-        label: nextLabel,
-        studentId:
-          existing.student_id == null ? null : Number(existing.student_id),
-      };
-    }
+      .update({ label: nextLabel, last_seen_at: nowIso() })
+      .eq('id', existing.id);
+    if (updateError) failFromDatabase(updateError);
   }
 
-  const nextRawToken = randomToken();
-  const nextDevice = {
-    id: randomUUID(),
+  if (!existingRawToken) {
+    appendCookie(state, DEVICE_COOKIE, rawToken, {
+      maxAge: DEVICE_SECONDS,
+      secure: IS_PRODUCTION,
+    });
+  }
+
+  return {
+    id: existing?.id ?? deviceIdFromTokenHash(tokenHash),
     label: nextLabel,
-    studentId: null,
+    studentId:
+      existing?.student_id == null ? null : Number(existing.student_id),
+    tokenHash,
   };
-  const now = nowIso();
-  const { error } = await supabase.from('browser_devices').insert({
-    id: nextDevice.id,
-    token_hash: sha256Hex(nextRawToken),
-    label: nextDevice.label,
-    student_id: null,
-    created_at: now,
-    last_seen_at: now,
-  });
-  if (error) failFromDatabase(error);
-
-  appendCookie(state, DEVICE_COOKIE, nextRawToken, {
-    maxAge: DEVICE_SECONDS,
-    secure: IS_PRODUCTION,
-  });
-
-  return nextDevice;
 }
 
-async function studentAccount(studentNumber: string, name: string) {
+async function studentAccount(studentNumber: string) {
   const supabase = getSupabase();
   const { data: student, error: studentError } = await supabase
     .from('students')
     .select('id, student_number, name, grade, class_number, seat_number, attendance_weekdays')
     .eq('student_number', studentNumber)
-    .eq('name', name)
     .maybeSingle<StudentRow>();
   if (studentError) failFromDatabase(studentError);
   if (!student) return null;
@@ -688,7 +713,96 @@ async function studentAccount(studentNumber: string, name: string) {
     student_number: student.student_number,
     student_id: student.id,
     name: student.name,
+    password_hash: user.password_hash,
   } satisfies StudentAccountRow;
+}
+
+function loginAttemptKey(bucket: 'student' | 'teacher', subject: string) {
+  return sha256Hex(`${bucket}\0${subject.normalize('NFKC').toLowerCase()}`);
+}
+
+async function consumeLoginAttempt(keyHash: string, userId: number | null) {
+  const { data, error } = await getSupabase().rpc('consume_login_attempt', {
+    p_key_hash: keyHash,
+    p_user_id: userId,
+    p_limit: LOGIN_ATTEMPT_LIMIT,
+    p_window_seconds: LOGIN_WINDOW_SECONDS,
+  });
+  if (error) failFromDatabase(error, '로그인 제한을 확인하지 못했습니다.');
+  const result = data as {
+    allowed?: unknown;
+    retry_after_seconds?: unknown;
+  } | null;
+  if (!result || typeof result.allowed !== 'boolean') {
+    fail('로그인 제한 응답이 올바르지 않습니다.', 500);
+  }
+  if (!result.allowed) {
+    const retryAfter = Number(result.retry_after_seconds);
+    fail(
+      Number.isFinite(retryAfter) && retryAfter > 0
+        ? `잠시 후 다시 시도해 주세요. (${Math.ceil(retryAfter)}초 후 가능)`
+        : '잠시 후 다시 시도해 주세요.',
+      429,
+    );
+  }
+}
+
+async function clearLoginAttempt(keyHash: string) {
+  const { data, error } = await getSupabase().rpc('clear_login_attempt', {
+    p_key_hash: keyHash,
+  });
+  if (error) failFromDatabase(error, '로그인 제한을 초기화하지 못했습니다.');
+  if (data !== true) fail('로그인 제한 응답이 올바르지 않습니다.', 500);
+}
+
+async function authenticateStudent(body: Record<string, unknown>) {
+  const studentNumber = assertStudentNumber(body.studentNumber);
+  const name = assertPersonName(body.name);
+  const pin = assertStudentPin(body.pin);
+  const attemptKey = loginAttemptKey('student', studentNumber);
+  const student = await studentAccount(studentNumber);
+  await consumeLoginAttempt(attemptKey, student?.id ?? null);
+  const pinMatches = await verifySecret(
+    pin,
+    student?.password_hash ?? DUMMY_SECRET_HASH,
+  );
+  if (!student || student.name !== name || !pinMatches) {
+    fail('학번, 이름 또는 PIN이 올바르지 않습니다.', 401);
+  }
+  await clearLoginAttempt(attemptKey);
+  return student;
+}
+
+async function claimStudentDevice(
+  studentId: number,
+  device: Awaited<ReturnType<typeof browserDevice>>,
+) {
+  const { data, error } = await getSupabase().rpc('claim_student_device', {
+    p_device_id: device.id,
+    p_token_hash: device.tokenHash,
+    p_label: device.label,
+    p_student_id: studentId,
+    p_max_devices: MAX_DEVICES_PER_STUDENT,
+  });
+  if (error) failFromDatabase(error, '기기 등록을 완료하지 못했습니다.');
+  const result = data as {
+    status?: unknown;
+    device_id?: unknown;
+    registered_count?: unknown;
+  } | null;
+  if (!result || typeof result.status !== 'string') {
+    fail('기기 등록 응답이 올바르지 않습니다.', 500);
+  }
+  if (result.status === 'device_owned_by_other') {
+    fail('이 기기는 이미 다른 학생에게 등록되어 있습니다.', 409);
+  }
+  if (result.status === 'device_limit_reached') {
+    fail('등록 가능한 기기 수를 모두 사용했습니다.', 409);
+  }
+  if (result.status !== 'claimed') {
+    fail('기기 등록을 완료하지 못했습니다.', 500);
+  }
+  return result;
 }
 
 async function studentDeviceCount(studentId: number) {
@@ -696,7 +810,8 @@ async function studentDeviceCount(studentId: number) {
   const { count, error } = await supabase
     .from('browser_devices')
     .select('id', { count: 'exact', head: true })
-    .eq('student_id', studentId);
+    .eq('student_id', studentId)
+    .gt('expires_at', nowIso());
   if (error) failFromDatabase(error);
   return count ?? 0;
 }
@@ -749,6 +864,7 @@ async function listStudents() {
     .from('browser_devices')
     .select('student_id')
     .not('student_id', 'is', null)
+    .gt('expires_at', nowIso())
     .returns<Array<{ student_id: number }>>();
   if (deviceError) failFromDatabase(deviceError);
 
@@ -819,29 +935,6 @@ async function attendanceRecords(session: Awaited<ReturnType<typeof requireSessi
       },
     ];
   });
-}
-
-async function dailyPresence(studentId: number): Promise<DailyPresence> {
-  const today = koreaDateKey();
-  const supabase = getSupabase();
-  const { data: records, error } = await supabase
-    .from('attendance_records')
-    .select('action, timestamp, recorded_sequence')
-    .eq('student_id', studentId)
-    .order('timestamp', { ascending: false })
-    .order('recorded_sequence', { ascending: false })
-    .returns<Array<{
-      action: AttendanceAction;
-      timestamp: string;
-      recorded_sequence: number;
-    }>>();
-  if (error) failFromDatabase(error);
-
-  const latestRecord = (records ?? []).find(
-    (row) => koreaDateKey(row.timestamp) === today,
-  );
-  if (!latestRecord || latestRecord.action === 'absent') return null;
-  return latestRecord.action === 'check_out' ? 'checked_out' : 'present';
 }
 
 function distanceMeters(
@@ -918,13 +1011,66 @@ async function createAttendanceRecord(
   return { ...record, recordedSequence: Number(inserted.recorded_sequence) };
 }
 
+async function createSelfAttendanceRecord(
+  student: Pick<StudentRow, 'id' | 'student_number' | 'name'>,
+  device: Awaited<ReturnType<typeof browserDevice>>,
+) {
+  const { data, error } = await getSupabase().rpc('record_self_attendance', {
+    p_student_id: student.id,
+    p_device_id: device.id,
+    p_device_token_hash: device.tokenHash,
+  });
+  if (error) failFromDatabase(error, '출석 처리를 완료하지 못했습니다.');
+  const result = data as {
+    status?: unknown;
+    id?: unknown;
+    action?: unknown;
+    timestamp?: unknown;
+    recorded_sequence?: unknown;
+    device_id?: unknown;
+    device_label?: unknown;
+  } | null;
+  if (!result || typeof result.status !== 'string') {
+    fail('출석 처리 응답이 올바르지 않습니다.', 500);
+  }
+  if (result.status === 'closed') {
+    fail('오늘 출석과 퇴실 처리를 모두 마쳤습니다.', 409);
+  }
+  if (result.status === 'too_soon') {
+    fail('중복 요청이 감지되었습니다. 잠시 후 다시 시도해 주세요.', 409);
+  }
+  if (result.status === 'device_invalid') {
+    fail('등록된 기기에서만 출석할 수 있습니다.', 403);
+  }
+  if (
+    result.status !== 'created' ||
+    typeof result.id !== 'string' ||
+    (result.action !== 'check_in' && result.action !== 'check_out') ||
+    typeof result.timestamp !== 'string' ||
+    typeof result.device_id !== 'string' ||
+    typeof result.device_label !== 'string'
+  ) {
+    fail('출석 처리 응답이 올바르지 않습니다.', 500);
+  }
+  return {
+    id: result.id,
+    studentNumber: student.student_number,
+    studentName: student.name,
+    action: result.action,
+    timestamp: result.timestamp,
+    recordedSequence: Number(result.recorded_sequence),
+    deviceId: result.device_id,
+    deviceLabel: result.device_label,
+  };
+}
+
 async function handleApi(req: NextRequest, state: ApiState) {
   const { pathname } = req.nextUrl;
   const supabase = getSupabase();
 
   if (req.method === 'POST' && pathname === '/api/device') {
     const body = await readJson(req);
-    const device = await ensureBrowserDevice(req, state, body.label);
+    const device = await browserDevice(req, state, body.label);
     return sendJson(state, 200, { id: device.id, label: device.label });
   }
 
@@ -942,9 +1088,9 @@ async function handleApi(req: NextRequest, state: ApiState) {
 
   if (req.method === 'POST' && pathname === '/api/auth/teacher-login') {
     const body = await readJson(req);
-    const identifier = assertString(body.identifier, '고유 번호를 입력해 주세요.');
-    const displayName = assertString(body.displayName, '이름을 입력해 주세요.');
-    checkRateLimit(req, 'teacher-login', displayName);
+    const identifier = assertTeacherIdentifier(body.identifier);
+    const displayName = assertPersonName(body.displayName);
+    const attemptKey = loginAttemptKey('teacher', displayName);
     const { data: teachers, error } = await supabase
       .from('users')
       .select('id, username, password_hash, display_name, role, student_id')
@@ -952,21 +1098,25 @@ async function handleApi(req: NextRequest, state: ApiState) {
       .eq('display_name', displayName)
       .returns<DbUserRow[]>();
     if (error) failFromDatabase(error);
+    await consumeLoginAttempt(attemptKey, teachers?.[0]?.id ?? null);
 
-    const teacher = (teachers ?? []).find((item) =>
-      verifySecret(identifier, item.password_hash),
-    );
+    let teacher: DbUserRow | null = null;
+    if (teachers?.length) {
+      teacher = await findSecretMatch(identifier, teachers);
+    } else {
+      await verifySecret(identifier, DUMMY_SECRET_HASH);
+    }
     if (!teacher) {
       fail('번호 또는 이름이 올바르지 않습니다.', 401);
     }
+    await clearLoginAttempt(attemptKey);
     if (isLegacySha256Hash(teacher.password_hash)) {
       const { error: updateError } = await supabase
         .from('users')
-        .update({ password_hash: hashSecret(identifier) })
+        .update({ password_hash: await hashSecret(identifier) })
         .eq('id', teacher.id);
       if (updateError) failFromDatabase(updateError);
     }
-    clearRateLimit(req, 'teacher-login', displayName);
     return sendJson(
       state,
       200,
@@ -997,15 +1147,8 @@ async function handleApi(req: NextRequest, state: ApiState) {
 
   if (req.method === 'POST' && pathname === '/api/students/access') {
     const body = await readJson(req);
-    const studentNumber = assertStudentNumber(body.studentNumber);
-    const name = assertString(body.name, '이름을 입력해 주세요.');
-    checkRateLimit(req, 'student-access', studentNumber);
-    const device = await ensureBrowserDevice(req, state, body.deviceLabel);
-    const student = await studentAccount(studentNumber, name);
-    if (!student) {
-      fail('학번 또는 이름이 올바르지 않습니다.', 401);
-    }
-    clearRateLimit(req, 'student-access', studentNumber);
+    const student = await authenticateStudent(body);
+    const device = await browserDevice(req, state, body.deviceLabel);
     const count = await studentDeviceCount(student.student_id);
     if (device.studentId === student.student_id) {
       return sendJson(state, 200, {
@@ -1053,31 +1196,9 @@ async function handleApi(req: NextRequest, state: ApiState) {
 
   if (req.method === 'POST' && pathname === '/api/students/register-device') {
     const body = await readJson(req);
-    const studentNumber = assertStudentNumber(body.studentNumber);
-    const name = assertString(body.name, '이름을 입력해 주세요.');
-    checkRateLimit(req, 'student-register', studentNumber);
-    const device = await ensureBrowserDevice(req, state, body.deviceLabel);
-    const student = await studentAccount(studentNumber, name);
-    if (!student) {
-      fail('학번 또는 이름이 올바르지 않습니다.', 401);
-    }
-    if (device.studentId != null && device.studentId !== student.student_id) {
-      fail('이 기기는 이미 다른 학생에게 등록되어 있습니다.', 409);
-    }
-    const count = await studentDeviceCount(student.student_id);
-    if (device.studentId == null && count >= MAX_DEVICES_PER_STUDENT) {
-      fail('등록 가능한 기기 수를 모두 사용했습니다.', 409);
-    }
-    const { error } = await supabase
-      .from('browser_devices')
-      .update({
-        student_id: student.student_id,
-        label: device.label,
-        last_seen_at: nowIso(),
-      })
-      .eq('id', device.id);
-    if (error) failFromDatabase(error);
-    clearRateLimit(req, 'student-register', studentNumber);
+    const student = await authenticateStudent(body);
+    const device = await browserDevice(req, state, body.deviceLabel);
+    await claimStudentDevice(student.student_id, device);
     return sendJson(state, 200, await createSession(state, student));
   }
 
@@ -1091,7 +1212,8 @@ async function handleApi(req: NextRequest, state: ApiState) {
     requireCsrf(req, session);
     const body = await readJson(req);
     const studentNumber = assertStudentNumber(body.studentNumber);
-    const name = assertString(body.name, '이름을 입력해 주세요.');
+    const name = assertPersonName(body.name);
+    const pin = assertStudentPin(body.pin);
     const seatNumber = assertPositiveInteger(
       body.seatNumber,
       '좌석 번호를 올바르게 입력해 주세요.',
@@ -1124,7 +1246,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
 
     const { error: userError } = await supabase.from('users').insert({
       username: studentNumber,
-      password_hash: 'unused',
+      password_hash: await hashSecret(pin),
       display_name: name,
       role: 'student',
       student_id: student.id,
@@ -1144,12 +1266,16 @@ async function handleApi(req: NextRequest, state: ApiState) {
     const studentId = Number(studentMatch[1]);
     const body = await readJson(req);
     const studentNumber = assertStudentNumber(body.studentNumber);
-    const name = assertString(body.name, '이름을 입력해 주세요.');
+    const name = assertPersonName(body.name);
     const seatNumber = assertPositiveInteger(
       body.seatNumber,
       '좌석 번호를 올바르게 입력해 주세요.',
     );
     const attendanceWeekdays = assertAttendanceWeekdays(body.attendanceWeekdays);
+    const newPin =
+      typeof body.newPin === 'string' && body.newPin
+        ? assertStudentPin(body.newPin)
+        : null;
     const { grade, classNumber } = parseStudentClassOrFail(studentNumber);
     const { data: duplicate, error: duplicateError } = await supabase
       .from('students')
@@ -1162,29 +1288,23 @@ async function handleApi(req: NextRequest, state: ApiState) {
       fail('이미 등록된 학번입니다.', 409);
     }
 
-    const { data: updatedStudent, error } = await supabase
-      .from('students')
-      .update({
-        student_number: studentNumber,
-        name,
-        grade,
-        class_number: classNumber,
-        seat_number: seatNumber,
-        attendance_weekdays: attendanceWeekdays,
-      })
-      .eq('id', studentId)
-      .select('id, student_number, name, grade, class_number, seat_number, attendance_weekdays')
-      .maybeSingle<StudentRow>();
-    if (error) failFromDatabase(error);
-    if (!updatedStudent) {
-      fail('학생을 찾을 수 없습니다.', 404);
+    const { data: updated, error } = await supabase.rpc(
+      'update_student_profile',
+      {
+        p_student_id: studentId,
+        p_student_number: studentNumber,
+        p_name: name,
+        p_grade: grade,
+        p_class_number: classNumber,
+        p_seat_number: seatNumber,
+        p_attendance_weekdays: attendanceWeekdays,
+        p_password_hash: newPin ? await hashSecret(newPin) : null,
+      },
+    );
+    if (error) {
+      failFromDatabase(error, '학생 정보를 수정하지 못했습니다.');
     }
-
-    const { error: userError } = await supabase
-      .from('users')
-      .update({ username: studentNumber, display_name: name })
-      .eq('student_id', studentId);
-    if (userError) failFromDatabase(userError);
+    if (updated !== true) fail('학생 계정을 찾을 수 없습니다.', 404);
 
     const responseStudent = await getStudentWithDeviceCount(studentId);
     if (!responseStudent) {
@@ -1215,11 +1335,11 @@ async function handleApi(req: NextRequest, state: ApiState) {
   if (resetDeviceMatch && req.method === 'POST') {
     const session = await requireRole(req, 'teacher');
     requireCsrf(req, session);
-    const { error } = await supabase
-      .from('browser_devices')
-      .update({ student_id: null })
-      .eq('student_id', Number(resetDeviceMatch[1]));
+    const { data: reset, error } = await supabase.rpc('reset_student_access', {
+      p_student_id: Number(resetDeviceMatch[1]),
+    });
     if (error) failFromDatabase(error);
+    if (reset !== true) fail('학생을 찾을 수 없습니다.', 404);
     return sendEmpty(state);
   }
 
@@ -1247,17 +1367,16 @@ async function handleApi(req: NextRequest, state: ApiState) {
     const session = await requireRole(req, 'teacher');
     requireCsrf(req, session);
     const body = await readJson(req);
-    const identifier = assertString(body.identifier, '고유 번호를 입력해 주세요.');
-    const name = assertString(body.name, '이름을 입력해 주세요.');
+    const identifier = assertNewTeacherIdentifier(body.identifier);
+    const name = assertPersonName(body.name);
     const { data: teachers, error } = await supabase
       .from('users')
       .select('password_hash')
       .eq('role', 'teacher')
       .returns<Array<{ password_hash: string }>>();
     if (error) failFromDatabase(error);
-    const duplicateIdentifier = (teachers ?? []).some((teacher) =>
-      verifySecret(identifier, teacher.password_hash),
-    );
+    const duplicateIdentifier =
+      (await findSecretMatch(identifier, teachers ?? [])) != null;
     if (duplicateIdentifier) {
       fail('이미 사용 중인 고유 번호입니다.', 409);
     }
@@ -1265,7 +1384,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
       .from('users')
       .insert({
         username: `teacher:${randomUUID()}`,
-        password_hash: hashSecret(identifier),
+        password_hash: await hashSecret(identifier),
         display_name: name,
         role: 'teacher',
       })
@@ -1281,13 +1400,10 @@ async function handleApi(req: NextRequest, state: ApiState) {
     requireCsrf(req, session);
     const teacherId = Number(teacherMatch[1]);
     const body = await readJson(req);
-    const name = assertString(body.name, '이름을 입력해 주세요.');
-    const updatePayload: { display_name: string; password_hash?: string } = {
-      display_name: name,
-    };
-
+    const name = assertPersonName(body.name);
+    let newPasswordHash: string | null = null;
     if (typeof body.newIdentifier === 'string' && body.newIdentifier.trim()) {
-      const newIdentifier = body.newIdentifier.trim();
+      const newIdentifier = assertNewTeacherIdentifier(body.newIdentifier);
       const { data: teachers, error } = await supabase
         .from('users')
         .select('id, password_hash')
@@ -1295,21 +1411,26 @@ async function handleApi(req: NextRequest, state: ApiState) {
         .neq('id', teacherId)
         .returns<Array<{ id: number; password_hash: string }>>();
       if (error) failFromDatabase(error);
-      const duplicateIdentifier = (teachers ?? []).some((teacher) =>
-        verifySecret(newIdentifier, teacher.password_hash),
-      );
+      const duplicateIdentifier =
+        (await findSecretMatch(newIdentifier, teachers ?? [])) != null;
       if (duplicateIdentifier) {
         fail('이미 사용 중인 고유 번호입니다.', 409);
       }
-      updatePayload.password_hash = hashSecret(newIdentifier);
+      newPasswordHash = await hashSecret(newIdentifier);
     }
 
-    const { error: updateError } = await supabase
-      .from('users')
-      .update(updatePayload)
-      .eq('id', teacherId)
-      .eq('role', 'teacher');
-    if (updateError) failFromDatabase(updateError);
+    const { data: updated, error: updateError } = await supabase.rpc(
+      'update_teacher_account',
+      {
+        p_teacher_id: teacherId,
+        p_display_name: name,
+        p_password_hash: newPasswordHash,
+      },
+    );
+    if (updateError) {
+      failFromDatabase(updateError, '선생님 계정을 수정하지 못했습니다.');
+    }
+    if (updated !== true) fail('선생님 계정을 찾을 수 없습니다.', 404);
 
     const { data: teacher, error } = await supabase
       .from('users')
@@ -1352,7 +1473,7 @@ async function handleApi(req: NextRequest, state: ApiState) {
     requireCsrf(req, session);
     const body = await readJson(req);
     validateLocation(body.location);
-    const device = await ensureBrowserDevice(req, state, body.deviceLabel);
+    const device = await browserDevice(req, state, body.deviceLabel);
     const { data: student, error } = await supabase
       .from('students')
       .select('id, student_number, name, grade, class_number, seat_number, attendance_weekdays')
@@ -1362,15 +1483,18 @@ async function handleApi(req: NextRequest, state: ApiState) {
     if (!student || device.studentId !== Number(student.id)) {
       fail('등록된 기기에서만 출석할 수 있습니다.', 403);
     }
-    const presence = await dailyPresence(student.id);
-    if (presence === 'checked_out') {
-      fail('오늘 출석과 퇴실 처리를 모두 마쳤습니다.', 409);
+    if (
+      !isStudentScheduledOnDate(
+        koreaDateKey(),
+        assertAttendanceWeekdays(student.attendance_weekdays),
+      )
+    ) {
+      fail('오늘은 출석 대상 요일이 아닙니다.', 400);
     }
-    const action = presence === 'present' ? 'check_out' : 'check_in';
     return sendJson(
       state,
       201,
-      await createAttendanceRecord(student, action, device.id, device.label),
+      await createSelfAttendanceRecord(student, device),
     );
   }
 

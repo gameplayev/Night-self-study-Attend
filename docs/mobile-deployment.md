@@ -12,7 +12,7 @@
 
 `SUPABASE_SERVICE_ROLE_KEY`는 anon/public/publishable key가 아닌 Supabase secret/service-role key여야 한다. `NEXT_PUBLIC_*`로 만들거나 브라우저 코드에 넣지 않는다. 세션은 `HttpOnly` 쿠키로 유지하고 변경 요청은 CSRF 검사를 통과해야 하므로, 모바일에서도 Supabase에 직접 연결하지 않는다.
 
-기존 Supabase 프로젝트도 새 서버 코드를 배포하기 전에 SQL editor에서 최신 `supabase/schema.sql`을 다시 실행해야 한다. 이 단계가 `attendance_records.recorded_sequence`와 정렬 인덱스를 먼저 추가하므로, 적용 전에는 새 서버 버전을 배포하지 않는다.
+기존 Supabase 프로젝트도 새 서버 코드를 배포하기 전에 SQL editor에서 최신 `supabase/schema.sql`을 다시 실행해야 한다. 이 단계가 `attendance_records.recorded_sequence`, 기기 만료, 공유 로그인 제한, 원자적 기기 등록·자기출석 RPC를 먼저 추가하므로, 적용 전에는 새 서버 버전을 배포하지 않는다. 기존 `password_hash='unused'` 학생은 교사 화면에서 개별 4자리 PIN을 설정하기 전까지 로그인할 수 없으며 공통 기본 PIN은 만들지 않는다.
 
 ## Vercel 배포
 
@@ -52,6 +52,7 @@ Next.js App Router의 `app/manifest.ts`와 HTTPS 설치 경로는 [공식 Progre
 - [ ] 운영 URL이 HTTPS이며 `/api/health`가 HTTP 200이다. 이는 liveness 확인일 뿐 준비 완료 판정이 아니다.
 - [ ] `/manifest.webmanifest`가 HTTP 200이고 `logo192.png`, `logo512.png`, `apple-touch-icon.png`가 모두 열린다.
 - [ ] 최신 스키마와 환경 변수가 적용된 상태에서 교사 로그인, 출결 화면 데이터 로드, 로그아웃이 동작하고 세션 쿠키가 브라우저 화면에 노출되지 않는다.
+- [ ] 교사가 시험 학생의 PIN을 설정하고, 틀린 PIN은 거부되며 정확한 4자리 PIN만 로그인·기기 등록에 사용된다.
 - [ ] 학생 기기 등록 후 위치 권한을 허용했을 때 현재 위치 기반 출석이 처리된다.
 - [ ] 위치 권한 거부, 로그인 만료, 잘못된 요청이 오류 메시지로 끝나며 출석 기록이 임의로 바뀌지 않는다.
 - [ ] 학생 출석과 퇴실이 각각 한 번씩 처리된다.

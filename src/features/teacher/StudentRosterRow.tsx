@@ -19,6 +19,7 @@ export type StudentRosterEditForm = {
   readonly studentNumber: string;
   readonly name: string;
   readonly seatNumber: string;
+  readonly newPin: string;
   readonly attendanceWeekdays: readonly AttendanceWeekday[];
 };
 
@@ -87,9 +88,11 @@ export function StudentRosterRow({
 
   async function saveStudent() {
     if (!editStudent || editStudent.attendanceWeekdays.length === 0) return;
+    const { newPin, ...studentFields } = editStudent;
     await onUpdateStudent(student, {
-      ...editStudent,
+      ...studentFields,
       seatNumber: Number(editStudent.seatNumber),
+      ...(newPin ? { newPin } : {}),
     });
     onCancelEditing();
   }
@@ -216,6 +219,28 @@ export function StudentRosterRow({
               ? '퇴실'
               : '미출석'}
         </span>
+        {isEditing ? (
+          <label className="mt-2 block">
+            <span className="sr-only">{student.name} 새 PIN 4자리</span>
+            <input
+              type="password"
+              value={editStudent.newPin}
+              onChange={(event) =>
+                onEditStudentChange({
+                  ...editStudent,
+                  newPin: event.target.value.replace(/[^0-9]/g, '').slice(0, 4),
+                })
+              }
+              inputMode="numeric"
+              minLength={4}
+              maxLength={4}
+              pattern="[0-9]{4}"
+              autoComplete="new-password"
+              placeholder="PIN 재설정 (선택)"
+              className="h-8 w-28 rounded-md border border-slate-300 px-2 text-sm"
+            />
+          </label>
+        ) : null}
       </td>
       <StudentRosterActions
         student={student}

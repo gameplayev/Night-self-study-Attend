@@ -33,6 +33,7 @@ export function TeacherManagementPanels({
     studentNumber: '',
     name: '',
     seatNumber: '',
+    pin: '',
   });
   const parsedClassLabel = formatParsedStudentClass(newStudent.studentNumber);
   const [editingTeacherId, setEditingTeacherId] = useState<number | null>(null);
@@ -45,11 +46,13 @@ export function TeacherManagementPanels({
         studentNumber: newStudent.studentNumber,
         name: newStudent.name,
         seatNumber: Number(newStudent.seatNumber),
+        pin: newStudent.pin,
       });
       setNewStudent({
         studentNumber: '',
         name: '',
         seatNumber: '',
+        pin: '',
       });
     } catch {
       // Error feedback is shown by the parent view.
@@ -95,6 +98,7 @@ export function TeacherManagementPanels({
               }))
             }
             inputMode="numeric"
+            required
             maxLength={5}
             pattern="[0-9]{5}"
             placeholder="학번 5자리"
@@ -109,6 +113,7 @@ export function TeacherManagementPanels({
               }))
             }
             placeholder="이름"
+            required
             className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
           />
           <input
@@ -121,6 +126,26 @@ export function TeacherManagementPanels({
             }
             inputMode="numeric"
             placeholder="좌석 번호"
+            required
+            className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+          />
+          <input
+            type="password"
+            value={newStudent.pin}
+            onChange={(event) =>
+              setNewStudent((value) => ({
+                ...value,
+                pin: event.target.value.replace(/[^0-9]/g, '').slice(0, 4),
+              }))
+            }
+            inputMode="numeric"
+            required
+            minLength={4}
+            maxLength={4}
+            pattern="[0-9]{4}"
+            autoComplete="new-password"
+            placeholder="초기 PIN 4자리"
+            aria-label="초기 PIN 4자리"
             className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
           />
           <p className="text-xs text-slate-500">
@@ -152,6 +177,7 @@ export function TeacherManagementPanels({
               }))
             }
             placeholder="이름"
+            required
             className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
           />
           <input
@@ -164,6 +190,9 @@ export function TeacherManagementPanels({
               }))
             }
             placeholder="고유 번호"
+            required
+            minLength={8}
+            maxLength={128}
             className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
           />
           <button
@@ -202,6 +231,8 @@ export function TeacherManagementPanels({
                       )
                     }
                     placeholder="새 고유 번호 (변경할 때만 입력)"
+                    minLength={8}
+                    maxLength={128}
                     className="h-9 w-full rounded-md border border-slate-300 px-3"
                   />
                   <div className="flex gap-2">

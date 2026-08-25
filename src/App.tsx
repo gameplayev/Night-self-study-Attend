@@ -33,6 +33,7 @@ import {
   submitManualAttendance,
   teacherLogin,
 } from './services/appService';
+import type { StudentCredentials } from './services/appService';
 import { DeviceIdentity, getCurrentDevice } from './services/deviceService';
 import {
   LocationAccessError,
@@ -157,18 +158,18 @@ function App() {
     }
   }
 
-  async function handleStudentCheck(studentNumber: string, name: string) {
+  async function handleStudentCheck(credentials: StudentCredentials) {
     if (!device) return;
     setIsWorking(true);
     setLoginError(null);
     try {
-      const access = await checkStudentAccess(studentNumber, name, device);
+      const access = await checkStudentAccess(credentials, device);
       if (access.status === 'authenticated' && access.session) {
         applySession(access.session);
         return;
       }
       if (access.status === 'registration_required') {
-        setPendingRegistration({ studentNumber, name, access });
+        setPendingRegistration({ access });
         return;
       }
       if (access.status === 'device_owned_by_other') {
@@ -186,16 +187,12 @@ function App() {
   }
 
   // 첫 로그인 학생이 현재 기기를 자기 계정에 연결하는 흐름이다.
-  async function handleRegisterDevice() {
+  async function handleRegisterDevice(credentials: StudentCredentials) {
     if (!pendingRegistration || !device) return;
     setIsWorking(true);
     setLoginError(null);
     try {
-      const nextSession = await registerStudentDevice(
-        pendingRegistration.studentNumber,
-        pendingRegistration.name,
-        device,
-      );
+      const nextSession = await registerStudentDevice(credentials, device);
       setPendingRegistration(null);
       applySession(nextSession);
     } catch (error) {
