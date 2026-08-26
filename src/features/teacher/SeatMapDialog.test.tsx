@@ -66,3 +66,31 @@ test('open seat map updates a student status after the next DB refresh', async (
 
   expect(screen.getByLabelText('1번 좌석, 홍길동, 출석중')).toBeVisible();
 });
+
+test('main desks follow the classroom grouped reading order', async () => {
+  await act(async () =>
+    render(
+      <SeatMapDialog
+        students={[]}
+        presenceMap={new Map()}
+        onRefreshAttendance={jest.fn().mockResolvedValue(undefined)}
+        onClose={jest.fn()}
+      />,
+    ),
+  );
+
+  const firstDeskColumn = screen
+    .getAllByRole('listitem')
+    .slice(7, 15)
+    .map((seat) => seat.getAttribute('aria-label'));
+  expect(firstDeskColumn).toEqual([
+    '71번 좌석, 미배정, 미배정',
+    '73번 좌석, 미배정, 미배정',
+    '70번 좌석, 미배정, 미배정',
+    '72번 좌석, 미배정, 미배정',
+    '59번 좌석, 미배정, 미배정',
+    '61번 좌석, 미배정, 미배정',
+    '58번 좌석, 미배정, 미배정',
+    '60번 좌석, 미배정, 미배정',
+  ]);
+});

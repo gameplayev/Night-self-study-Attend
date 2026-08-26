@@ -22,13 +22,10 @@ const TOP_ROW = [16, 17, 18, 19, 20, 21, 22] as const;
 const RIGHT_ROW = [23, 24, 25, 26, 27, 28, 29] as const;
 const LEFT_UPPER_ROW = [9, 10, 11, 12, 13, 14, 15] as const;
 const LEFT_LOWER_ROW = [8, 7, 6, 5, 4, 3, 2, 1] as const;
-const UPPER_DESKS = [
-  [71, 73, 75, 77, 79, 81],
-  [70, 72, 74, 76, 78, 80],
-] as const;
-const MIDDLE_DESKS = [
-  [59, 61, 63, 65, 67, 69],
-  [58, 60, 62, 64, 66, 68],
+const MAIN_DESK_COLUMNS = [
+  [[[71, 73], [70, 72]], [[59, 61], [58, 60]]],
+  [[[75, 77], [74, 76]], [[63, 65], [62, 64]]],
+  [[[79, 81], [78, 80]], [[67, 69], [66, 68]]],
 ] as const;
 const ISLANDS: readonly SeatIsland[] = [
   {
@@ -221,21 +218,27 @@ export function SeatMapDialog({
         </div>
 
         <div className="mt-5 overflow-x-auto rounded-md border border-slate-200 bg-slate-50 p-4">
-          <div className="min-w-[980px] space-y-4" role="list" aria-label="야자실 좌석 배치">
-            <div className="ml-auto grid w-[620px] grid-cols-7 gap-2">
-              {TOP_ROW.map(renderSeat)}
+          <div className="w-[980px] space-y-4" role="list" aria-label="야자실 좌석 배치">
+            <div className="grid grid-cols-[240px_1fr_72px] gap-6">
+              <div aria-hidden="true" />
+              <div className="col-span-2 grid grid-cols-7 gap-2">
+                {TOP_ROW.map(renderSeat)}
+              </div>
             </div>
 
             <div className="grid grid-cols-[240px_1fr_72px] gap-6">
               <div className="flex min-h-64 items-center justify-center rounded-md border border-slate-300 bg-white text-sm font-semibold text-slate-500">
                 도서 공간
               </div>
-              <div className="space-y-4">
-                {UPPER_DESKS.map((row) => (
-                  <div key={row[0]} className="grid grid-cols-6 gap-4">{row.map(renderSeat)}</div>
-                ))}
-                {MIDDLE_DESKS.map((row) => (
-                  <div key={row[0]} className="grid grid-cols-6 gap-4">{row.map(renderSeat)}</div>
+              <div className="grid grid-cols-3 gap-x-8">
+                {MAIN_DESK_COLUMNS.map((column) => (
+                  <div key={column[0][0][0]} className="space-y-8">
+                    {column.map((desk) => (
+                      <div key={desk[0][0]} className="grid grid-cols-2 gap-2">
+                        {desk.flat().map(renderSeat)}
+                      </div>
+                    ))}
+                  </div>
                 ))}
               </div>
               <div className="grid gap-2">{RIGHT_ROW.map(renderSeat)}</div>
