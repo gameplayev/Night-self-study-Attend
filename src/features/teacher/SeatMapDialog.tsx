@@ -183,9 +183,6 @@ export function SeatMapDialog({
             <h2 id="seat-map-title" className="text-xl font-semibold">
               야자 좌석 현황
             </h2>
-            <p className="mt-1 text-sm text-slate-600">
-              오늘 출석 기록을 지정석 기준으로 표시합니다.
-            </p>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -206,9 +203,11 @@ export function SeatMapDialog({
           </div>
         </div>
 
-        <p className={`mt-3 text-xs ${refreshError ? 'font-medium text-rose-700' : 'text-slate-500'}`} role={refreshError ? 'alert' : undefined}>
-          {refreshError ?? '10초마다 DB 출석 기록을 자동으로 갱신합니다.'}
-        </p>
+        {refreshError && (
+          <p className="mt-3 text-xs font-medium text-rose-700" role="alert">
+            {refreshError}
+          </p>
+        )}
 
         <div className="mt-4 flex flex-wrap gap-2 text-xs font-medium">
           <span className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-emerald-800">출석중</span>
