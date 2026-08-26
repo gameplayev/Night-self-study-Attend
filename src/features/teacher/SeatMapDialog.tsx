@@ -218,7 +218,7 @@ export function SeatMapDialog({
         </div>
 
         <div className="mt-5 overflow-x-auto rounded-md border border-slate-200 bg-slate-50 p-4">
-          <div className="w-[980px] space-y-4" role="list" aria-label="야자실 좌석 배치">
+          <div className="min-w-[1120px] space-y-4" role="list" aria-label="야자실 좌석 배치">
             <div className="grid grid-cols-[240px_1fr_72px] gap-6">
               <div aria-hidden="true" />
               <div className="col-span-2 grid grid-cols-7 gap-2">
@@ -244,7 +244,7 @@ export function SeatMapDialog({
               <div className="grid gap-2">{RIGHT_ROW.map(renderSeat)}</div>
             </div>
 
-            <div className="grid grid-cols-[1fr_280px_280px] items-start gap-6">
+            <div className="grid grid-cols-[504px_1fr_1fr] items-start gap-6">
               <div className="space-y-4">
                 <div className="grid grid-cols-7 gap-2">{LEFT_UPPER_ROW.map(renderSeat)}</div>
                 <div className="grid grid-cols-8 gap-2">{LEFT_LOWER_ROW.map(renderSeat)}</div>
